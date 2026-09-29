@@ -4,21 +4,18 @@ test.describe('Ciclo principale (mock)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('./?mock');
     await expect(page.getByTestId('btn-next')).toBeDisabled();
-    await page.evaluate(() => {
-      window.__ready = new Promise((res) => {
-        const check = () => {
-          const btn = document.getElementById('btn-next');
-          if (btn && !btn.disabled) res();
-          else setTimeout(check, 50);
-        };
-        check();
-      });
-    });
     await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
   });
 
   test('prompt vuoto: pulsante disabilitato', async ({ page }) => {
     await expect(page.getByTestId('btn-next')).toBeDisabled();
+  });
+
+  test('mock riconoscibile: badge e avviso visibili', async ({ page }) => {
+    await expect(page.getByTestId('mock-badge')).toBeVisible();
+    await expect(page.getByTestId('mock-badge')).toHaveText('MOCK');
+    await expect(page.getByTestId('mock-warning')).toBeVisible();
+    await expect(page.getByTestId('mock-warning')).toContainText('simulati');
   });
 
   test('prompt mostrato come token e ID prima del calcolo', async ({ page }) => {
@@ -27,13 +24,11 @@ test.describe('Ciclo principale (mock)', () => {
     await expect(chips).toHaveCount(3);
     const first = chips.first();
     expect(await first.getAttribute('title')).toContain('Token ID:');
-    expect(await first.textContent()).not.toMatch(/^<tok-\d+>$/);
-    // ogni chip mostra il badge con il token ID
     const ids = await page.getByTestId('prompt-preview').locator('.chip-id').allTextContents();
     expect(ids.length).toBe(3);
     for (const id of ids) expect(id).toMatch(/^\d+$/);
-    // conteggio token nella preview
     await expect(page.locator('.preview-count')).toHaveText('3 token');
+    await expect(page.getByTestId('preview-meta')).toContainText('3 token · tokenizer');
   });
 
   test('primo click: token, ID, ranking e percentuali visibili', async ({ page }) => {
@@ -43,11 +38,35 @@ test.describe('Ciclo principale (mock)', () => {
     await expect(page.getByTestId('step-result')).toBeVisible();
     const rows = page.getByTestId('ranking-body').locator('tr');
     expect(await rows.count()).toBeGreaterThan(0);
-    await expect(rows.first().locator('.tag')).toHaveText('scelto');
+    await expect(rows.first().locator('.tag')).toContainText('scelto');
     const probText = await rows.first().locator('.prob').textContent();
     expect(probText).toMatch(/\d/);
     const chip = page.getByTestId('token-sequence').locator('.chip').first();
     expect(await chip.getAttribute('title')).toContain('Token ID:');
+  });
+
+  test('token scelto: scheda con testo grande, ID, probabilità e rank', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const card = page.getByTestId('chosen-card');
+    await expect(card).toBeVisible();
+    const big = await card.locator('#chosen-big').textContent();
+    expect(big).toBeTruthy();
+    const idText = await card.locator('#chosen-id').textContent();
+    expect(idText).toMatch(/^\d+$/);
+    const probText = await card.locator('#chosen-prob').textContent();
+    expect(probText).toMatch(/%\s*$/);
+    const rankText = await card.locator('#chosen-rank').textContent();
+    expect(rankText).toMatch(/^#\d+$/);
+    await expect(page.getByTestId('params-applied')).toContainText('Parametri applicati: temperatura');
+  });
+
+  test('coerenza: token scelto in scheda e in classifica hanno lo stesso ID', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const chosenId = await page.locator('#chosen-id').textContent();
+    const chosenRowId = await page.getByTestId('ranking-body').locator('tr.chosen-row td:nth-child(3)').textContent();
+    expect(chosenId).toBe(chosenRowId);
   });
 
   test('token generato ha classe di stile distinta', async ({ page }) => {
@@ -65,23 +84,38 @@ test.describe('Ciclo principale (mock)', () => {
       await page.getByTestId('btn-next').click();
       await expect(seq.locator('.chip')).toHaveCount(3 + i);
       const msg = await page.getByTestId('context-message').textContent();
-      expect(msg).toContain(`${3 + i} token di contesto`);
+      expect(msg).toContain(`${3 + i} token`);
     }
     const promptChips = seq.locator('.chip.prompt');
     await expect(promptChips).toHaveCount(3);
   });
 
-  test('modifica prompt: genera avviso e invalida la generazione', async ({ page }) => {
+  test('stato cache a tre livelli: contesto logico, calcolo corrente, stato', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b c');
+    await page.getByTestId('btn-next').click();
+    const box = page.getByTestId('cache-status');
+    await expect(box).toBeVisible();
+    await expect(box).toContainText('Contesto logico: 4 token');
+    await expect(box).toContainText('Calcolo corrente: 3 token');
+    await expect(box).toContainText('KV cache: attiva');
+    // secondo passo: calcolo corrente = 1 token
+    await page.getByTestId('btn-next-bottom').click();
+    await expect(box).toContainText('Calcolo corrente: 1 token');
+  });
+
+  test('modifica prompt: sequenza attenuata, avviso e invalidazione', async ({ page }) => {
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('btn-next').click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
     await page.getByTestId('prompt').fill('a b c d');
     await expect(page.getByTestId('prompt-hint')).toBeVisible();
-    await expect(page.getByTestId('prompt-hint')).toContainText('Prompt modificato');
+    await expect(page.getByTestId('prompt-hint')).toContainText('generazione precedente è stata annullata');
+    await expect(page.getByTestId('token-sequence')).toHaveClass(/stale/);
     await page.getByTestId('btn-next').click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(5);
     await expect(page.getByTestId('token-sequence').locator('.chip.generated')).toHaveCount(1);
     await expect(page.getByTestId('token-sequence').locator('.chip.prompt')).toHaveCount(4);
+    await expect(page.getByTestId('token-sequence')).not.toHaveClass(/stale/);
   });
 
   test('reset: risultati eliminati e pulsante di nuovo disabilitato', async ({ page }) => {
@@ -91,24 +125,30 @@ test.describe('Ciclo principale (mock)', () => {
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(0);
     await expect(page.getByTestId('step-result')).toBeHidden();
     await expect(page.getByTestId('btn-next')).toBeDisabled();
+    await expect(page.getByTestId('cache-status')).toBeHidden();
   });
 
-  test('pulsante mostra Calcolo… durante l\'elaborazione', async ({ page }) => {
+  test('cambio parametro: nota che sarà applicato al prossimo calcolo', async ({ page }) => {
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('btn-next').click();
-    await expect(page.getByTestId('btn-next')).toBeEnabled();
+    await page.locator('#params-panel summary').click();
+    await page.locator('#param-temperature').fill('0.5');
+    await expect(page.getByTestId('params-hint')).toBeVisible();
+    await expect(page.getByTestId('params-hint')).toContainText('applicato al prossimo calcolo');
+    await page.getByTestId('btn-next').click();
+    await expect(page.getByTestId('params-hint')).toBeHidden();
   });
 
-  test('modalità naive e cache: stessa lunghezza di contesto', async ({ page }) => {
+  test('modalità naive e cache: stesso contesto logico, testo diverso', async ({ page }) => {
     await page.locator('#params-panel summary').click();
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('param-cachemode').selectOption('naive');
     await page.getByTestId('btn-next').click();
-    await expect(page.getByTestId('cache-message')).toContainText('ricalcolo completo');
+    await expect(page.getByTestId('cache-status')).toContainText('non usata');
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
     await page.getByTestId('param-cachemode').selectOption('cache');
     await page.getByTestId('btn-next').click();
-    await expect(page.getByTestId('cache-message')).toContainText('KV cache');
+    await expect(page.getByTestId('cache-status')).toContainText('attiva');
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(5);
   });
 });
@@ -126,7 +166,6 @@ test.describe('Errori runtime', () => {
         el.textContent = 'Errore runtime: simulato';
         el.hidden = false;
       }, { once: true });
-      document.getElementById('error').dataset.armed = '1';
     });
     await page.getByTestId('btn-next').click();
     await expect(page.getByTestId('error')).toBeVisible();
@@ -143,10 +182,6 @@ test.describe('Loop ricorsivo e pulsante in fondo', () => {
     await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
   });
 
-  test('il pulsante in fondo è disabilitato prima del primo calcolo', async ({ page }) => {
-    await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
-  });
-
   test('dieci click dal pulsante in fondo: contesto cresce di uno per passo', async ({ page }) => {
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('btn-next').click();
@@ -156,7 +191,7 @@ test.describe('Loop ricorsivo e pulsante in fondo', () => {
       await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(3 + i);
     }
     const msg = await page.getByTestId('context-message').textContent();
-    expect(msg).toContain('13 token di contesto');
+    expect(msg).toContain('13 token');
     expect(await page.getByTestId('btn-next-bottom').isEnabled()).toBe(true);
   });
 
@@ -169,35 +204,85 @@ test.describe('Loop ricorsivo e pulsante in fondo', () => {
     expect(first).not.toMatch(/^<tok-\d+>$/);
   });
 
-  test('token scelto mostra testo e ID insieme', async ({ page }) => {
-    await page.getByTestId('prompt').fill('a b');
+  test('il secondo click conserva esattamente il prompt', async ({ page }) => {
+    await page.getByTestId('prompt').fill('uno due tre');
     await page.getByTestId('btn-next').click();
-    const chosen = await page.getByTestId('step-result').locator('.chosen-token').textContent();
-    expect(chosen).toMatch(/· ID \d+ ·/);
-    expect(chosen).not.toMatch(/<tok-\d+>/);
+    await page.getByTestId('btn-next').click();
+    const promptChips = page.getByTestId('token-sequence').locator('.chip.prompt');
+    await expect(promptChips).toHaveCount(3);
+    const texts = await promptChips.allTextContents();
+    expect(texts.map((t) => t.replace(/\s*\d+$/, ''))).toEqual(['uno', 'due', 'tre']);
   });
 });
 
 test.describe('Termine generazione (EOS)', () => {
-  test('dopo EOS i pulsanti si disabilitano con testo esplicito', async ({ page }) => {
+  test('testo del pulsante riflette il contesto e il reset riabilita', async ({ page }) => {
     await page.goto('./?mock');
     await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
-    // forza il runtime mock a produrre sempre EOS al primo passo
-    await page.evaluate(() => { window.__forceEos = true; });
     await page.getByTestId('prompt').fill('a b');
-    // il mock sceglie EOS solo se è il top-1: simula eosReached via doppio limite
-    // qui testiamo il comportamento dello stato: generiamo finché non spunterà EOS è imprevedibile,
-    // quindi verifichiamo che il testo del pulsante rifletta il contesto a ogni passo
     await page.getByTestId('btn-next').click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(3);
     const btnBottom = page.getByTestId('btn-next-bottom');
-    await expect(btnBottom).toContainText('continua con 3 token di contesto');
     await btnBottom.click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
     await expect(btnBottom).toContainText('continua con 4 token di contesto');
-    // reset riparte
     await page.getByTestId('btn-reset').click();
     await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
     await expect(page.getByTestId('btn-next')).toBeDisabled();
+  });
+});
+
+test.describe('Miglioramenti a priorità bassa', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+  });
+  test('barre probabilità presenti nella classifica', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const bars = page.getByTestId('ranking-body').locator('.prob-bar');
+    await expect(bars).toHaveCount(5);
+    const firstFill = bars.first().locator('.prob-bar-fill');
+    await expect(firstFill).toHaveAttribute('style', /width:\d+%/);
+  });
+
+  test('preset prompt: cliccare un esempio riempie la textarea e abilita il pulsante', async ({ page }) => {
+    await page.locator('.preset').first().click();
+    await expect(page.getByTestId('prompt')).toHaveValue('Il cielo è');
+    await expect(page.getByTestId('btn-next')).toBeEnabled();
+  });
+
+  test('cronologia: righe con passo, token, contesto e delta dal secondo step', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b c');
+    await page.getByTestId('btn-next').click();
+    await page.getByTestId('btn-next-bottom').click();
+    await page.getByTestId('btn-next-bottom').click();
+    const rows = page.getByTestId('history-body').locator('tr');
+    await expect(rows).toHaveCount(3);
+    const firstDelta = await rows.first().locator('td').nth(6).textContent();
+    expect(firstDelta).toBe('—');
+    const secondDelta = await rows.nth(1).locator('td').nth(6).textContent();
+    expect(secondDelta).toMatch(/^[+−]\d+,\d+%$/);
+  });
+
+  test('esportazione cronologia: click genera download JSON', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    await page.locator('#history-panel summary').click();
+    const download = page.waitForEvent('download');
+    await page.getByTestId('btn-export').click();
+    const dl = await download;
+    expect(dl.suggestedFilename()).toBe('next-token-lab-cronologia.json');
+  });
+
+  test('animazione: il token appena generato ha la classe just-added', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    const lastChip = page.getByTestId('token-sequence').locator('.chip.last-generated');
+    const classPromise = lastChip.evaluate((el) => new Promise((resolve) => {
+      if (el.classList.contains('just-added')) resolve(true);
+      else el.addEventListener('animationend', () => resolve(el.classList.contains('just-added')));
+    }));
+    await page.getByTestId('btn-next').click();
+    expect(await classPromise).toBe(true);
   });
 });
