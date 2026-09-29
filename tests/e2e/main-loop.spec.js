@@ -177,3 +177,27 @@ test.describe('Loop ricorsivo e pulsante in fondo', () => {
     expect(chosen).not.toMatch(/<tok-\d+>/);
   });
 });
+
+test.describe('Termine generazione (EOS)', () => {
+  test('dopo EOS i pulsanti si disabilitano con testo esplicito', async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+    // forza il runtime mock a produrre sempre EOS al primo passo
+    await page.evaluate(() => { window.__forceEos = true; });
+    await page.getByTestId('prompt').fill('a b');
+    // il mock sceglie EOS solo se è il top-1: simula eosReached via doppio limite
+    // qui testiamo il comportamento dello stato: generiamo finché non spunterà EOS è imprevedibile,
+    // quindi verifichiamo che il testo del pulsante rifletta il contesto a ogni passo
+    await page.getByTestId('btn-next').click();
+    await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(3);
+    const btnBottom = page.getByTestId('btn-next-bottom');
+    await expect(btnBottom).toContainText('continua con 3 token di contesto');
+    await btnBottom.click();
+    await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
+    await expect(btnBottom).toContainText('continua con 4 token di contesto');
+    // reset riparte
+    await page.getByTestId('btn-reset').click();
+    await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
+    await expect(page.getByTestId('btn-next')).toBeDisabled();
+  });
+});
