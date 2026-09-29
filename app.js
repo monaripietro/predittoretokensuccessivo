@@ -105,14 +105,9 @@ function updateButton() {
   btn.textContent = label;
   btn.classList.toggle('highlight', state.isStale && !disabled);
   if (btnBottom) {
-    const started = state.stepIndex > 0;
-    btnBottom.disabled = disabled || !started;
-    btnBottom.textContent = state.eosReached
-      ? 'Generazione terminata (EOS)'
-      : state.isBusy ? 'Calcolo…'
-        : started
-          ? `Calcola token successivo (continua con ${state.contextTokens.length} token di contesto)`
-          : 'Calcola token successivo';
+    btnBottom.disabled = disabled;
+    btnBottom.textContent = label;
+    btnBottom.classList.toggle('highlight', state.isStale && !disabled);
   }
 }
 
