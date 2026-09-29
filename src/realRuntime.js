@@ -1,7 +1,12 @@
 /**
  * Runtime reale basato su Transformers.js (ONNX in-browser).
- * Modello: Xenova/distilgpt2 (distilgpt2, licenza MIT, ~35MB in q8/quantized).
+ * Modello: Xenova/distilgpt2 (distilgpt2, licenza MIT, ~35MB in q8).
  * Backend: WebGPU quando disponibile, fallback WASM.
+ *
+ * Nota tecnica: Transformers.js viene importato a runtime dall'ESM CDN
+ * (jsdelivr) invece di essere bundlato da Vite: onnxruntime-web richiede
+ * file .wasm/.mjs esterni che il bundling rompe. In Node (test) si usa
+ * il pacchetto npm locale.
  *
  * Contratto (stesso del mock):
  *  - init() -> { backend, modelInfo }
@@ -10,7 +15,24 @@
  * La cache è la past_key_values reale restituita dal forward pass.
  */
 
-import { env, AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
+const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+const IS_NODE = typeof window === 'undefined' && typeof process !== 'undefined';
+
+let transformersModule = null;
+
+async function loadTransformers() {
+  if (transformersModule) return transformersModule;
+  if (!IS_NODE) {
+    try {
+      transformersModule = await import(/* @vite-ignore */ CDN_URL);
+      return transformersModule;
+    } catch {
+      // rete o CDN non disponibili: prova il pacchetto npm (bundlato)
+    }
+  }
+  transformersModule = await import('@huggingface/transformers');
+  return transformersModule;
+}
 
 export class RealRuntime {
   constructor(modelId = 'Xenova/distilgpt2', dtype = 'q8') {
@@ -22,6 +44,8 @@ export class RealRuntime {
   }
 
   async init() {
+    const { AutoTokenizer, AutoModelForCausalLM, Tensor } = await loadTransformers();
+    this.Tensor = Tensor;
     this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId);
     this.eosId = this.tokenizer.eos_token_id;
     if (typeof this.eosId !== 'number') this.eosId = this.tokenizer.eos_token_id?.[0] ?? 50256;
@@ -29,8 +53,8 @@ export class RealRuntime {
     let webgpuOk = false;
     if (typeof navigator !== 'undefined' && navigator.gpu) {
       try {
-        await navigator.gpu.requestAdapter();
-        webgpuOk = true;
+        const adapter = await navigator.gpu.requestAdapter();
+        webgpuOk = !!adapter;
       } catch {
         webgpuOk = false;
       }
@@ -40,26 +64,32 @@ export class RealRuntime {
       try {
         this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
           device: 'webgpu',
-          dtype: this.dtype === 'q8' ? 'q8' : 'fp32',
+          dtype: this.dtype,
         });
         this.backend = 'WebGPU';
+        this.modelInfo = `${this.modelId} (${this.dtype})`;
+        return { backend: this.backend, modelInfo: this.modelInfo };
       } catch {
         webgpuOk = false;
       }
     }
-    if (!webgpuOk) {
-      try {
-        this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
-          device: 'wasm',
-          dtype: 'q8',
-        });
-        this.backend = 'WASM';
-      } catch {
+
+    try {
+      this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
+        device: 'wasm',
+        dtype: this.dtype,
+      });
+      this.backend = 'WASM';
+    } catch (err) {
+      // In Node il device si chiama 'cpu' invece di 'wasm'
+      if (IS_NODE) {
         this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
           device: 'cpu',
-          dtype: 'q8',
+          dtype: this.dtype,
         });
         this.backend = 'WASM (cpu)';
+      } else {
+        throw err;
       }
     }
 
@@ -81,7 +111,7 @@ export class RealRuntime {
   }
 
   /**
-   * Forward pass. Con cache: passa solo gli ultimi token new (almeno 1).
+   * Forward pass. Con cache: passa solo i token nuovi.
    * Senza cache (naive): ricalcola l'intera sequenza.
    */
   async nextLogits({ ids, cache = null }) {
@@ -94,7 +124,7 @@ export class RealRuntime {
     } else if (cache && cache.valid) {
       cache = null;
     }
-    const { Tensor } = await import('@huggingface/transformers');
+    const { Tensor } = this;
     const tensor = new Tensor('int64', BigInt64Array.from(inputIds.map((x) => BigInt(x))), [1, inputIds.length]);
     const past = cache && cache.valid ? cache.past : null;
     const maskLen = inputIds.length + (past ? cache.length : 0);
