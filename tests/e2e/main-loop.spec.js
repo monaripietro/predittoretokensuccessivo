@@ -225,7 +225,7 @@ test.describe('Termine generazione (EOS)', () => {
     const btnBottom = page.getByTestId('btn-next-bottom');
     await btnBottom.click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
-    await expect(btnBottom).toContainText('continua con 4 token di contesto');
+    await expect(btnBottom).toContainText('Calcola token successivo');
     await page.getByTestId('btn-reset').click();
     await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
     await expect(page.getByTestId('btn-next')).toBeDisabled();
@@ -284,5 +284,53 @@ test.describe('Miglioramenti a priorità bassa', () => {
     }));
     await page.getByTestId('btn-next').click();
     expect(await classPromise).toBe(true);
+  });
+});
+
+test.describe('Pulsante inferiore', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+  });
+
+  test('il pulsante inferiore continua la generazione dopo il primo step', async ({ page }) => {
+    const prompt = page.getByTestId('prompt');
+    const bottomButton = page.getByTestId('btn-next-bottom');
+
+    await prompt.fill('Il cielo è');
+    await expect(bottomButton).toBeEnabled();
+
+    await page.getByTestId('btn-next').click();
+
+    await expect(page.getByTestId('step-result')).toBeVisible();
+    await expect(bottomButton).toBeEnabled();
+
+    const sequenceBefore = await page
+      .getByTestId('token-sequence')
+      .locator('.chip')
+      .count();
+
+    await bottomButton.click();
+
+    await expect
+      .poll(async () => page.getByTestId('token-sequence').locator('.chip').count())
+      .toBe(sequenceBefore + 1);
+
+    await expect(bottomButton).toBeEnabled();
+  });
+
+  test('i due pulsanti hanno sempre lo stesso stato di abilitazione', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    const btn = page.getByTestId('btn-next');
+    const btnBottom = page.getByTestId('btn-next-bottom');
+    expect(await btn.isDisabled()).toBe(await btnBottom.isDisabled());
+    await btn.click();
+    await expect(page.getByTestId('step-result')).toBeVisible();
+    expect(await btn.isDisabled()).toBe(await btnBottom.isDisabled());
+    await page.getByTestId('prompt').fill('');
+    expect(await btn.isDisabled()).toBe(await btnBottom.isDisabled());
+    expect(await btn.isDisabled()).toBe(true);
+    await page.getByTestId('prompt').fill('a b c');
+    expect(await btn.isDisabled()).toBe(await btnBottom.isDisabled());
   });
 });
