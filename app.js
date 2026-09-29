@@ -22,6 +22,7 @@ const state = {
 const ui = {
   prompt: () => document.getElementById('prompt'),
   btnNext: () => document.getElementById('btn-next'),
+  btnNextBottom: () => document.getElementById('btn-next-bottom'),
   btnReset: () => document.getElementById('btn-reset'),
   modelIndicator: () => document.getElementById('model-indicator'),
   backendIndicator: () => document.getElementById('backend-indicator'),
@@ -78,10 +79,19 @@ function setBusy(busy) {
 
 function updateButton() {
   const btn = ui.btnNext();
+  const btnBottom = ui.btnNextBottom();
   const promptEmpty = !ui.prompt().value.trim();
   const modelReady = state.modelStatus === 'ready';
-  btn.disabled = state.isBusy || promptEmpty || !modelReady;
+  const disabled = state.isBusy || promptEmpty || !modelReady;
+  btn.disabled = disabled;
   btn.textContent = state.isBusy ? 'Calcolo…' : 'Calcola token successivo';
+  if (btnBottom) {
+    const started = state.stepIndex > 0;
+    btnBottom.disabled = disabled || !started;
+    btnBottom.textContent = state.isBusy ? 'Calcolo…' : started
+      ? `Calcola token successivo (continua con ${state.contextTokens.length} token di contesto)`
+      : 'Calcola token successivo';
+  }
 }
 
 function invalidateGeneration() {
@@ -115,10 +125,46 @@ function makeChip(token, id, position, kind) {
   chip.dataset.position = position;
   const isEos = id === runtime.eosId;
   if (isEos) chip.classList.add('eos');
-  chip.textContent = isEos ? '⟨EOS⟩' : token;
-  chip.title = `Testo: ${isEos ? '<eos>' : token} · Token ID: ${id} · Posizione: ${position}`;
+  const displayText = isEos ? '⟨EOS⟩' : displayTokenText(id);
+  chip.textContent = displayText;
+  chip.title = `Testo: ${isEos ? '<eos>' : displayText} · Token ID: ${id} · Posizione: ${position}`;
   chip.tabIndex = 0;
   return chip;
+}
+
+/**
+ * Mostra la tokenizzazione live del prompt corrente (token + ID)
+ * anche prima del primo calcolo.
+ */
+function liveTokenizePrompt() {
+  if (!runtime) return;
+  const prompt = ui.prompt().value.trim();
+  const committed = committedPromptId.value;
+  if (committed !== null && committed !== ui.prompt().value) {
+    const ids = runtime.encode(prompt);
+    state.promptTokens = ids;
+    state.contextTokens = ids;
+    state.generatedTokens = [];
+    renderPromptPreview(ids);
+    return;
+  }
+  if (state.stepIndex === 0) {
+    const ids = runtime.encode(prompt);
+    state.promptTokens = ids;
+    state.contextTokens = ids;
+    renderPromptPreview(ids);
+  }
+}
+
+function renderPromptPreview(ids) {
+  const preview = document.getElementById('prompt-preview');
+  if (!preview) return;
+  preview.innerHTML = '';
+  if (!ids || ids.length === 0) return;
+  ids.forEach((id, i) => {
+    const chip = makeChip(runtime.idToToken(id), id, i, 'prompt');
+    preview.appendChild(chip);
+  });
 }
 
 function renderSequence() {
@@ -150,17 +196,27 @@ function renderRanking() {
     if (c.tokenId === state.selectedToken?.tokenId) tr.classList.add('chosen-row');
     const chosenTag = c.tokenId === state.selectedToken?.tokenId
       ? ' <span class="tag">scelto</span>' : '';
+    const tokenText = escapeHtml(displayTokenText(c.tokenId));
     tr.innerHTML = `
       <td>${i + 1}</td>
-      <td>${escapeHtml(runtime.idToToken(c.tokenId))}${chosenTag}</td>
+      <td><span class="token-text">${tokenText}</span>${chosenTag}</td>
       <td>${c.tokenId}</td>
       <td class="prob">${(c.prob * 100).toFixed(1).replace('.', ',')}%</td>`;
     body.appendChild(tr);
   });
   if (state.selectedToken) {
-    ui.chosenToken().textContent =
-      `«${runtime.idToToken(state.selectedToken.tokenId)}» · ID ${state.selectedToken.tokenId} · p=${(state.selectedProbability * 100).toFixed(1).replace('.', ',')}%`;
+    const txt = displayTokenText(state.selectedToken.tokenId);
+    ui.chosenToken().innerHTML =
+      `<strong>${escapeHtml(txt)}</strong> · ID ${state.selectedToken.tokenId} · p=${(state.selectedProbability * 100).toFixed(1).replace('.', ',')}%`;
   }
+}
+
+/** Testo leggibile del token: il testo del vocabolario se disponibile. */
+function displayTokenText(id) {
+  if (id === runtime.eosId) return '⟨EOS⟩';
+  const token = runtime.idToToken(id);
+  if (/^<tok-\d+>$/.test(token)) return `<tok-${id}>`;
+  return token;
 }
 
 function escapeHtml(s) {
@@ -283,17 +339,21 @@ function reset() {
   ui.cacheMessage().hidden = true;
   ui.sequence().innerHTML = '';
   ui.sequence().classList.add('empty');
+  const preview = document.getElementById('prompt-preview');
+  if (preview) preview.innerHTML = '';
   clearError();
   updateButton();
 }
 
 function init() {
   ui.btnNext().addEventListener('click', nextStep);
+  ui.btnNextBottom()?.addEventListener('click', nextStep);
   ui.btnReset().addEventListener('click', reset);
   ui.prompt().addEventListener('input', () => {
     const changed = committedPromptId.value !== null && committedPromptId.value !== ui.prompt().value;
     ui.hint().hidden = !changed;
     updateButton();
+    liveTokenizePrompt();
   });
   document.getElementById('param-cachemode').addEventListener('change', (e) => {
     state.mode = e.target.value;
@@ -314,6 +374,7 @@ function init() {
     updateButton();
   });
   updateButton();
+  liveTokenizePrompt();
 }
 
 init();
