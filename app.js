@@ -138,7 +138,7 @@ function makeChip(token, id, position, kind) {
  * anche prima del primo calcolo.
  */
 function liveTokenizePrompt() {
-  if (!runtime) return;
+  if (!runtime || state.modelStatus !== 'ready') return;
   const prompt = ui.prompt().value.trim();
   const committed = committedPromptId.value;
   if (committed !== null && committed !== ui.prompt().value) {
@@ -164,8 +164,17 @@ function renderPromptPreview(ids) {
   if (!ids || ids.length === 0) return;
   ids.forEach((id, i) => {
     const chip = makeChip(runtime.idToToken(id), id, i, 'prompt');
+    const badge = document.createElement('span');
+    badge.className = 'chip-id';
+    badge.textContent = id;
+    chip.appendChild(document.createTextNode(' '));
+    chip.appendChild(badge);
     preview.appendChild(chip);
   });
+  const count = document.createElement('span');
+  count.className = 'preview-count';
+  count.textContent = `${ids.length} token`;
+  preview.appendChild(count);
 }
 
 function renderSequence() {
@@ -353,8 +362,12 @@ function init() {
   ui.prompt().addEventListener('input', () => {
     const changed = committedPromptId.value !== null && committedPromptId.value !== ui.prompt().value;
     ui.hint().hidden = !changed;
-    updateButton();
-    liveTokenizePrompt();
+    try {
+      updateButton();
+      liveTokenizePrompt();
+    } catch {
+      // il runtime non è ancora pronto: la preview partirà al termine dell'init
+    }
   });
   document.getElementById('param-cachemode').addEventListener('change', (e) => {
     state.mode = e.target.value;
@@ -369,6 +382,7 @@ function init() {
       showError('Modello reale non disponibile in questo ambiente: uso il mock deterministico.');
     }
     updateButton();
+    liveTokenizePrompt();
   }).catch((err) => {
     state.modelStatus = 'error';
     showError(`Impossibile inizializzare il modello: ${err.message}`);
