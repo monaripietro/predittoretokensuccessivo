@@ -1,0 +1,180 @@
+:root {
+  --bg: #10141a;
+  --surface: #1a2029;
+  --text: #e6e9ee;
+  --muted: #8b96a5;
+  --accent: #4da3ff;
+  --accent-strong: #7cc0ff;
+  --neutral-chip: #2a3340;
+  --generated-chip: #123a5c;
+  --generated-border: #4da3ff;
+  --danger: #ff6b6b;
+  --border: #2c3540;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1 { margin-bottom: 0.25rem; }
+.subtitle { color: var(--muted); margin-top: 0; }
+
+.status-bar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin: 1rem 0;
+}
+
+.controls textarea {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-size: 1rem;
+  resize: vertical;
+}
+
+label { display: block; margin-bottom: 0.4rem; font-size: 0.95rem; }
+
+.buttons { display: flex; gap: 0.75rem; margin: 0.75rem 0; }
+
+button {
+  font-size: 1rem;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+button.primary { background: var(--accent); border-color: var(--accent); color: #08121d; font-weight: 600; }
+button.primary:disabled { background: var(--neutral-chip); color: var(--muted); cursor: not-allowed; }
+button.secondary { background: var(--surface); color: var(--text); }
+
+.hint { color: var(--accent-strong); font-size: 0.9rem; }
+.error { color: var(--danger); font-size: 0.9rem; }
+
+.params {
+  margin-top: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.params summary { cursor: pointer; color: var(--muted); }
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.6rem;
+  padding-top: 0.75rem;
+}
+
+.params input, .params select {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
+}
+
+.results { margin-top: 1.5rem; }
+
+.token-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 2.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+
+.token-sequence.empty { color: var(--muted); }
+.token-sequence.empty::after { content: "Nessun token: inserisci un prompt e premi il pulsante."; }
+
+.chip {
+  position: relative;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--neutral-chip);
+  font-family: ui-monospace, monospace;
+  cursor: default;
+}
+
+.chip.generated {
+  background: var(--generated-chip);
+  border-color: var(--generated-border);
+  color: var(--accent-strong);
+}
+
+.chip.last-generated { border-width: 2px; box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.35); }
+.chip.eos { background: #3d2a2a; border-color: var(--danger); color: #ffb3b3; }
+
+.context-message, .cache-message {
+  font-size: 0.9rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.chosen-token {
+  font-family: ui-monospace, monospace;
+  font-size: 1.1rem;
+  background: var(--generated-chip);
+  border: 1px solid var(--generated-border);
+  border-radius: 8px;
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+}
+
+table.ranking {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+table.ranking th, table.ranking td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+table.ranking td.prob { text-align: right; font-variant-numeric: tabular-nums; }
+table.ranking th:nth-child(1), table.ranking td:nth-child(1) { text-align: right; width: 4rem; }
+
+tr.chosen-row td { background: var(--generated-chip); color: var(--accent-strong); }
+tr.chosen-row td .tag {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--generated-border);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+}
+
+.hidden { display: none !important; }
