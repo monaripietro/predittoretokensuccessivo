@@ -10,6 +10,7 @@ const state = {
   ranking: null,
   selectedToken: null,
   selectedProbability: null,
+  selectedRank: null,
   stepIndex: 0,
   modelStatus: 'loading',
   backend: '…',
@@ -18,50 +19,62 @@ const state = {
   cacheState: null,
   history: [],
   eosReached: false,
+  isStale: false,
   error: null,
 };
 
-const ui = {
-  prompt: () => document.getElementById('prompt'),
-  btnNext: () => document.getElementById('btn-next'),
-  btnNextBottom: () => document.getElementById('btn-next-bottom'),
-  btnReset: () => document.getElementById('btn-reset'),
-  modelIndicator: () => document.getElementById('model-indicator'),
-  backendIndicator: () => document.getElementById('backend-indicator'),
-  hint: () => document.getElementById('prompt-hint'),
-  error: () => document.getElementById('error'),
-  paramsError: () => document.getElementById('params-error'),
-  sequence: () => document.getElementById('token-sequence'),
-  contextMessage: () => document.getElementById('context-message'),
-  stepResult: () => document.getElementById('step-result'),
-  chosenToken: () => document.getElementById('chosen-token'),
-  rankingBody: () => document.getElementById('ranking-body'),
-  cacheMessage: () => document.getElementById('cache-message'),
-};
+const ui = (id) => document.getElementById(id);
 
-const useMock = new URLSearchParams(location.search).has('mock');
+const useMockParam = new URLSearchParams(location.search).has('mock');
 let runtime = null;
+let runtimeKind = 'real';
 
 async function initRuntime() {
-  if (useMock) {
+  if (useMockParam) {
     runtime = new MockRuntime();
+    runtimeKind = 'mock';
     const info = await runtime.init();
-    return { ...info, fallback: false };
+    return { ...info, kind: 'mock' };
   }
+  runtime = new RealRuntime();
+  runtimeKind = 'real';
   try {
-    runtime = new RealRuntime();
     const info = await runtime.init();
-    return { ...info, fallback: false };
+    return { ...info, kind: 'real' };
   } catch (err) {
-    runtime = new MockRuntime();
-    const info = await runtime.init();
-    return { ...info, backend: `${info.backend} (fallback)`, modelInfo: `${info.modelInfo} (fallback)`, fallback: true, cause: err };
+    runtime = null;
+    runtimeKind = 'error';
+    return { backend: '—', modelInfo: 'non disponibile', kind: 'error', cause: err };
   }
 }
+
+function startMockDemo() {
+  runtime = new MockRuntime();
+  runtimeKind = 'mock';
+  runtime.init().then((info) => {
+    state.modelStatus = 'ready';
+    state.backend = info.backend;
+    ui('model-indicator').textContent = `Modello: ${info.modelInfo}`;
+    ui('backend-indicator').textContent = `Backend: ${info.backend}`;
+    showMockUi(true);
+    if (state.contextTokens.length === 0 && state.promptTokens.length === 0) {
+      invalidateGeneration();
+    }
+    liveTokenizePrompt();
+    updateButton();
+  });
+}
+
+function showMockUi(show) {
+  ui('mock-badge').hidden = !show;
+  ui('mock-warning').hidden = !show;
+  ui('tech-runtime').textContent = show ? 'mock deterministico (simulato)' : 'reale (Transformers.js)';
+}
+
 const committedPromptId = { value: null };
 
 function readParams() {
-  const get = (id) => document.getElementById(id).value;
+  const get = (id) => ui(id).value;
   return {
     mode: get('param-mode'),
     temperature: parseFloat(get('param-temperature')),
@@ -80,9 +93,9 @@ function setBusy(busy) {
 }
 
 function updateButton() {
-  const btn = ui.btnNext();
-  const btnBottom = ui.btnNextBottom();
-  const promptEmpty = !ui.prompt().value.trim();
+  const btn = ui('btn-next');
+  const btnBottom = ui('btn-next-bottom');
+  const promptEmpty = !ui('prompt').value.trim();
   const modelReady = state.modelStatus === 'ready';
   const disabled = state.isBusy || promptEmpty || !modelReady || state.eosReached;
   const label = state.eosReached
@@ -90,6 +103,7 @@ function updateButton() {
     : state.isBusy ? 'Calcolo…' : 'Calcola token successivo';
   btn.disabled = disabled;
   btn.textContent = label;
+  btn.classList.toggle('highlight', state.isStale && !disabled);
   if (btnBottom) {
     const started = state.stepIndex > 0;
     btnBottom.disabled = disabled || !started;
@@ -104,21 +118,22 @@ function updateButton() {
 
 function invalidateGeneration() {
   state.eosReached = false;
+  state.isStale = false;
   state.generatedTokens = [];
   state.contextTokens = state.promptTokens.slice();
   state.ranking = null;
   state.selectedToken = null;
   state.selectedProbability = null;
+  state.selectedRank = null;
   state.stepIndex = 0;
   state.cacheState = null;
   state.history = [];
   state.error = null;
-  committedPromptId.value = ui.prompt().value;
 }
 
 function showError(message) {
   state.error = message;
-  const el = ui.error();
+  const el = ui('error');
   el.textContent = message;
   el.hidden = !message;
 }
@@ -127,12 +142,27 @@ function clearError() {
   showError(null);
 }
 
+/** Rende leggibili spazi e caratteri speciali nei token (didattica GPT-2 BPE). */
+function visualizeToken(token) {
+  return String(token)
+    .replace(/ /g, '␠')
+    .replace(/\n/g, '⏎')
+    .replace(/\t/g, '⇥')
+    .replace(/\r/g, '␍');
+}
+
+function displayTokenText(id) {
+  if (runtime && id === runtime.eosId) return '⟨EOS⟩';
+  if (!runtime) return String(id);
+  return visualizeToken(runtime.idToToken(id));
+}
+
 function makeChip(token, id, position, kind) {
   const chip = document.createElement('span');
   chip.className = `chip ${kind}`;
   chip.dataset.tokenId = id;
   chip.dataset.position = position;
-  const isEos = id === runtime.eosId;
+  const isEos = runtime && id === runtime.eosId;
   if (isEos) chip.classList.add('eos');
   const displayText = isEos ? '⟨EOS⟩' : displayTokenText(id);
   chip.textContent = displayText;
@@ -141,37 +171,35 @@ function makeChip(token, id, position, kind) {
   return chip;
 }
 
-/**
- * Mostra la tokenizzazione live del prompt corrente (token + ID)
- * anche prima del primo calcolo.
- */
 function liveTokenizePrompt() {
   if (!runtime || state.modelStatus !== 'ready') return;
-  const prompt = ui.prompt().value.trim();
+  const prompt = ui('prompt').value.trim();
   const committed = committedPromptId.value;
-  if (committed !== null && committed !== ui.prompt().value) {
+  const promptChanged = committed !== null && committed !== ui('prompt').value;
+  if (promptChanged || state.stepIndex === 0) {
     const ids = runtime.encode(prompt);
     state.promptTokens = ids;
-    state.contextTokens = ids;
-    state.generatedTokens = [];
+    if (promptChanged) {
+      state.contextTokens = ids;
+      state.generatedTokens = [];
+      state.isStale = true;
+      renderSequence();
+    } else if (state.stepIndex === 0) {
+      state.contextTokens = ids;
+    }
     renderPromptPreview(ids);
-    return;
-  }
-  if (state.stepIndex === 0) {
-    const ids = runtime.encode(prompt);
-    state.promptTokens = ids;
-    state.contextTokens = ids;
-    renderPromptPreview(ids);
+    updateButton();
   }
 }
 
 function renderPromptPreview(ids) {
-  const preview = document.getElementById('prompt-preview');
+  const preview = ui('prompt-preview');
   if (!preview) return;
   preview.innerHTML = '';
   if (!ids || ids.length === 0) return;
   ids.forEach((id, i) => {
-    const chip = makeChip(runtime.idToToken(id), id, i, 'prompt');
+    const chip = makeChip('', id, i, 'prompt');
+    chip.textContent = displayTokenText(id);
     const badge = document.createElement('span');
     badge.className = 'chip-id';
     badge.textContent = id;
@@ -183,12 +211,15 @@ function renderPromptPreview(ids) {
   count.className = 'preview-count';
   count.textContent = `${ids.length} token`;
   preview.appendChild(count);
+  const tokenizerName = runtimeKind === 'real' ? 'GPT-2 BPE' : 'didattico (parole)';
+  ui('preview-meta').textContent = `${ids.length} token · tokenizer ${tokenizerName}`;
 }
 
 function renderSequence() {
-  const box = ui.sequence();
+  const box = ui('token-sequence');
   box.innerHTML = '';
   box.classList.remove('empty');
+  box.classList.toggle('stale', state.isStale);
   const context = state.contextTokens;
   if (!context || context.length === 0) {
     box.classList.add('empty');
@@ -201,19 +232,19 @@ function renderSequence() {
     if (i < promptLen) kind = 'prompt';
     else if (i === context.length - 1 && genLen > 0) kind = 'generated last-generated';
     else kind = 'generated';
-    box.appendChild(makeChip(runtime.idToToken(id), id, i, kind));
+    box.appendChild(makeChip('', id, i, kind));
   });
 }
 
 function renderRanking() {
-  const body = ui.rankingBody();
+  const body = ui('ranking-body');
   body.innerHTML = '';
   const ranking = state.ranking || [];
   ranking.forEach((c, i) => {
     const tr = document.createElement('tr');
     if (c.tokenId === state.selectedToken?.tokenId) tr.classList.add('chosen-row');
     const chosenTag = c.tokenId === state.selectedToken?.tokenId
-      ? ' <span class="tag">scelto</span>' : '';
+      ? ' <span class="tag">✓ scelto</span>' : '';
     const tokenText = escapeHtml(displayTokenText(c.tokenId));
     tr.innerHTML = `
       <td>${i + 1}</td>
@@ -223,18 +254,13 @@ function renderRanking() {
     body.appendChild(tr);
   });
   if (state.selectedToken) {
-    const txt = displayTokenText(state.selectedToken.tokenId);
-    ui.chosenToken().innerHTML =
-      `<strong>${escapeHtml(txt)}</strong> · ID ${state.selectedToken.tokenId} · p=${(state.selectedProbability * 100).toFixed(1).replace('.', ',')}%`;
+    ui('chosen-big').textContent = displayTokenText(state.selectedToken.tokenId);
+    ui('chosen-id').textContent = state.selectedToken.tokenId;
+    ui('chosen-prob').textContent = `${(state.selectedProbability * 100).toFixed(1).replace('.', ',')}%`;
+    ui('chosen-rank').textContent = state.selectedRank !== null
+      ? `#${state.selectedRank}`
+      : (runtimeKind === 'real' ? '#1' : '#1');
   }
-}
-
-/** Testo leggibile del token: il testo del vocabolario se disponibile. */
-function displayTokenText(id) {
-  if (id === runtime.eosId) return '⟨EOS⟩';
-  const token = runtime.idToToken(id);
-  if (/^<tok-\d+>$/.test(token)) return `<tok-${id}>`;
-  return token;
 }
 
 function escapeHtml(s) {
@@ -244,28 +270,34 @@ function escapeHtml(s) {
 }
 
 function renderContextMessage() {
-  const el = ui.contextMessage();
+  const el = ui('context-message');
   const n = state.contextTokens.length;
+  const promptLen = state.promptTokens.length;
   el.hidden = false;
   if (state.stepIndex === 0 && n > 0) {
-    el.textContent = `Il prossimo token viene calcolato usando ${n} token di contesto.`;
+    el.textContent = `Il prossimo token viene calcolato usando ${n} token di contesto (tutti dal prompt).`;
+  } else if (state.stepIndex === 1) {
+    el.textContent = `Il modello ha elaborato i ${promptLen} token del prompt e ha calcolato la distribuzione del token in posizione ${promptLen + 1}. Il prossimo calcolo userà ${n} token di contesto.`;
   } else if (state.selectedToken) {
-    el.textContent =
-      `Il token «${runtime.idToToken(state.selectedToken.tokenId)}» è stato aggiunto. Il prossimo calcolo userà ${n} token di contesto.`;
+    el.textContent = `Il modello usa ora i ${n} token di contesto per calcolare il token in posizione ${n + 1}.`;
   } else {
     el.hidden = true;
   }
 }
 
-function renderCacheMessage(newTokens) {
-  const el = ui.cacheMessage();
+function renderCacheStatus(newTokens) {
+  const box = ui('cache-status');
   const n = state.contextTokens.length;
+  ui('cache-logical').textContent = n;
+  const cacheReallyValid = !!(state.cacheState && state.cacheState.valid !== false && (state.cacheState.past || state.cacheState.ids));
   if (state.mode === 'cache') {
-    el.textContent = `Contesto: ${n} token · Modalità: KV cache · Nuovo calcolo: ${newTokens ?? 0} token`;
+    ui('cache-current').textContent = `${newTokens ?? n} token`;
+    ui('cache-active').textContent = cacheReallyValid ? 'attiva' : 'non disponibile dal runtime';
   } else {
-    el.textContent = `Contesto: ${n} token · Modalità: ricalcolo completo`;
+    ui('cache-current').textContent = `${n} token`;
+    ui('cache-active').textContent = 'non usata (ricalcolo completo)';
   }
-  el.hidden = false;
+  box.hidden = false;
 }
 
 function render() {
@@ -273,23 +305,24 @@ function render() {
   renderRanking();
   renderContextMessage();
   const hasResult = state.selectedToken !== null;
-  ui.stepResult().hidden = !hasResult;
+  ui('step-result').hidden = !hasResult;
+  ui('eos-message').hidden = !state.eosReached;
   updateButton();
 }
 
 async function nextStep() {
-  if (state.isBusy) return;
+  if (state.isBusy || state.eosReached) return;
   clearError();
-  const prompt = ui.prompt().value.trim();
+  const prompt = ui('prompt').value.trim();
   if (!prompt) return;
   const { errors, values } = validateParams(readParams());
   if (errors.length > 0) {
-    const el = ui.paramsError();
+    const el = ui('params-error');
     el.textContent = errors.join(' · ');
     el.hidden = false;
     return;
   }
-  const el = ui.paramsError();
+  const el = ui('params-error');
   el.hidden = true;
 
   setBusy(true);
@@ -298,7 +331,9 @@ async function nextStep() {
     if (promptChanged) {
       state.promptText = prompt;
       state.promptTokens = runtime.encode(prompt);
+      state.isStale = false;
       invalidateGeneration();
+      renderSequence();
     } else if (state.contextTokens.length === 0) {
       state.promptTokens = runtime.encode(prompt);
       state.contextTokens = state.promptTokens.slice();
@@ -316,21 +351,32 @@ async function nextStep() {
     });
 
     state.selectedToken = step.chosen;
-    state.selectedProbability = step.chosen ? step.ranking.find((c) => c.tokenId === step.chosen.tokenId)?.prob ?? step.chosen.prob : null;
+    state.selectedProbability = step.chosen
+      ? step.ranking.find((c) => c.tokenId === step.chosen.tokenId)?.prob ?? step.chosen.prob
+      : null;
+    state.selectedRank = step.chosen
+      ? (step.ranking.findIndex((c) => c.tokenId === step.chosen.tokenId) + 1) || null
+      : null;
     state.ranking = step.ranking;
     state.generatedTokens.push(step.chosen.tokenId);
     state.contextTokens = state.promptTokens.concat(state.generatedTokens);
     state.stepIndex += 1;
     state.cacheState = step.cache;
     state.history.push({ step: state.stepIndex, tokenId: step.chosen.tokenId, prob: state.selectedProbability });
-    committedPromptId.value = ui.prompt().value;
-    ui.hint().hidden = true;
+    committedPromptId.value = ui('prompt').value;
+    state.isStale = false;
+    ui('prompt-hint').hidden = true;
+    ui('params-hint').hidden = true;
+
+    const p = { ...values };
+    ui('params-applied').textContent =
+      `Parametri applicati: temperatura ${p.temperature} · top-k ${p.topK} · top-p ${p.topP} · min-p ${p.minP} · repeat penalty ${p.repeatPenalty}`
+      + (p.mode === 'sample' ? ` · sample (seed ${p.seed})` : ' · greedy');
 
     if (step.isEos) {
       state.eosReached = true;
-      showError('Raggiunto il token EOS: la generazione è terminata.');
     }
-    renderCacheMessage(step.newTokens);
+    renderCacheStatus(step.newTokens);
     render();
   } catch (err) {
     showError(`Errore runtime: ${err.message}`);
@@ -341,65 +387,97 @@ async function nextStep() {
 
 function reset() {
   state.eosReached = false;
+  state.isStale = false;
   state.promptTokens = [];
   state.generatedTokens = [];
   state.contextTokens = [];
   state.ranking = null;
   state.selectedToken = null;
   state.selectedProbability = null;
+  state.selectedRank = null;
   state.stepIndex = 0;
   state.cacheState = null;
   state.history = [];
   state.error = null;
   committedPromptId.value = null;
-  ui.prompt().value = '';
-  ui.hint().hidden = true;
-  ui.stepResult().hidden = true;
-  ui.contextMessage().hidden = true;
-  ui.cacheMessage().hidden = true;
-  ui.sequence().innerHTML = '';
-  ui.sequence().classList.add('empty');
-  const preview = document.getElementById('prompt-preview');
-  if (preview) preview.innerHTML = '';
+  ui('prompt').value = '';
+  ui('prompt-hint').hidden = true;
+  ui('params-hint').hidden = true;
+  ui('step-result').hidden = true;
+  ui('context-message').hidden = true;
+  ui('cache-status').hidden = true;
+  ui('eos-message').hidden = true;
+  ui('sequence-hidden')?.removeAttribute('hidden');
+  const seq = ui('token-sequence');
+  seq.innerHTML = '';
+  seq.classList.add('empty');
+  seq.classList.remove('stale');
+  ui('prompt-preview').innerHTML = '';
+  ui('preview-meta').textContent = '';
   clearError();
   updateButton();
 }
 
 function init() {
-  ui.btnNext().addEventListener('click', nextStep);
-  ui.btnNextBottom()?.addEventListener('click', nextStep);
-  ui.btnReset().addEventListener('click', reset);
-  ui.prompt().addEventListener('input', () => {
-    const changed = committedPromptId.value !== null && committedPromptId.value !== ui.prompt().value;
-    ui.hint().hidden = !changed;
+  ui('btn-next').addEventListener('click', nextStep);
+  ui('btn-next-bottom')?.addEventListener('click', nextStep);
+  ui('btn-reset').addEventListener('click', reset);
+  ui('btn-mock').addEventListener('click', startMockDemo);
+  ui('prompt').addEventListener('input', () => {
+    const changed = committedPromptId.value !== null && committedPromptId.value !== ui('prompt').value;
+    ui('prompt-hint').hidden = !changed;
     try {
       updateButton();
       liveTokenizePrompt();
     } catch {
-      // il runtime non è ancora pronto: la preview partirà al termine dell'init
+      // runtime non ancora pronto
     }
   });
-  document.getElementById('param-cachemode').addEventListener('change', (e) => {
+  document.querySelectorAll('.params input, .params select').forEach((el) => {
+    const onParamChange = () => {
+      if (state.stepIndex > 0) {
+        ui('params-hint').hidden = false;
+      }
+    };
+    el.addEventListener('change', onParamChange);
+    el.addEventListener('input', onParamChange);
+  });
+  ui('param-cachemode').addEventListener('change', (e) => {
     state.mode = e.target.value;
   });
 
-  initRuntime().then(({ backend, modelInfo, fallback }) => {
+  ui('model-download').hidden = false;
+  initRuntime().then(({ backend, modelInfo, kind, cause }) => {
+    if (kind === 'error') {
+      state.modelStatus = 'error';
+      ui('model-indicator').textContent = 'Modello: non disponibile';
+      ui('backend-indicator').textContent = `Backend: errore (${cause && cause.message ? cause.message.slice(0, 80) : 'sconosciuto'})`;
+      ui('model-download').hidden = true;
+      ui('btn-mock').hidden = false;
+      showError('Il modello reale non si è caricato. Puoi esplorare l\'interfaccia con la demo mock (risultati simulati).');
+      updateButton();
+      return;
+    }
     state.modelStatus = 'ready';
     state.backend = backend;
-    ui.modelIndicator().textContent = `Modello: ${modelInfo}`;
-    ui.backendIndicator().textContent = `Backend: ${backend}`;
-    if (fallback) {
-      showError('Modello reale non disponibile in questo ambiente: uso il mock deterministico.');
+    ui('model-indicator').textContent = `Modello: ${modelInfo}`;
+    ui('backend-indicator').textContent = `Backend: ${backend}`;
+    ui('tech-backend').textContent = backend;
+    ui('model-download').hidden = true;
+    if (kind === 'mock') {
+      showMockUi(true);
+    } else {
+      showMockUi(false);
     }
     updateButton();
     liveTokenizePrompt();
   }).catch((err) => {
     state.modelStatus = 'error';
+    ui('model-download').hidden = true;
     showError(`Impossibile inizializzare il modello: ${err.message}`);
     updateButton();
   });
   updateButton();
-  liveTokenizePrompt();
 }
 
 init();

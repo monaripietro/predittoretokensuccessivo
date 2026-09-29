@@ -20,7 +20,15 @@
     <section class="status-bar">
       <span id="model-indicator">Modello: caricamento…</span>
       <span id="backend-indicator">Backend: …</span>
+      <span id="mock-badge" class="mock-badge" data-testid="mock-badge" hidden>MOCK</span>
     </section>
+
+    <p id="model-download" class="download-note" data-testid="model-download" hidden>
+      Primo avvio: download del modello (circa 35 MB). Il download può richiedere alcuni secondi…
+    </p>
+    <p id="mock-warning" class="mock-warning" data-testid="mock-warning" hidden>
+      ⚠️ Runtime mock attivo: i risultati sono simulati e servono solo per testare l'interfaccia.
+    </p>
 
     <section class="controls">
       <label for="prompt">Prompt</label>
@@ -34,10 +42,17 @@
         <button id="btn-reset" data-testid="btn-reset" class="secondary" type="button">
           Reset
         </button>
+        <button id="btn-mock" data-testid="btn-mock" class="secondary" type="button" hidden>
+          Avvia demo mock
+        </button>
       </div>
 
       <p id="prompt-hint" class="hint" data-testid="prompt-hint" hidden>
-        Prompt modificato: premi Calcola token successivo per ricominciare.
+        Il prompt è cambiato. La generazione precedente è stata annullata.
+        Premi "Calcola token successivo" per iniziare una nuova sequenza.
+      </p>
+      <p id="params-hint" class="hint" data-testid="params-hint" hidden>
+        Parametro modificato: il nuovo valore sarà applicato al prossimo calcolo.
       </p>
       <p id="error" class="error" data-testid="error" hidden></p>
 
@@ -49,47 +64,95 @@
               <option value="greedy">Greedy</option>
               <option value="sample">Sample</option>
             </select>
+            <small>Greedy sceglie sempre il candidato più probabile; Sample estrae a sorte dalla distribuzione.</small>
           </label>
-          <label>Temperatura <input id="param-temperature" type="number" min="0.1" max="5" step="0.1" value="1.0" /></label>
-          <label>Top-k <input id="param-topk" type="number" min="0" max="1000" step="1" value="0" /></label>
-          <label>Top-p <input id="param-topp" type="number" min="0" max="1" step="0.01" value="1.0" /></label>
-          <label>Min-p <input id="param-minp" type="number" min="0" max="1" step="0.01" value="0" /></label>
-          <label>Repeat penalty <input id="param-repeat" type="number" min="1" max="2" step="0.05" value="1.0" /></label>
-          <label>Seed <input id="param-seed" type="number" step="1" value="42" /></label>
-          <label>Top-N <input id="param-topn" type="number" min="1" max="20" step="1" value="5" /></label>
+          <label>Temperatura <input id="param-temperature" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+            <small>Modifica la concentrazione della distribuzione: bassa = più deterministica, alta = più varia.</small>
+          </label>
+          <label>Top-k <input id="param-topk" type="number" min="0" max="1000" step="1" value="0" />
+            <small>Mantiene al massimo k candidati. 0 = disattivato.</small>
+          </label>
+          <label>Top-p <input id="param-topp" type="number" min="0" max="1" step="0.01" value="1.0" />
+            <small>Mantiene i candidati fino alla probabilità cumulativa indicata. 1.0 = disattivato.</small>
+          </label>
+          <label>Min-p <input id="param-minp" type="number" min="0" max="1" step="0.01" value="0" />
+            <small>Elimina i token troppo lontani dal candidato principale. 0 = disattivato.</small>
+          </label>
+          <label>Repeat penalty <input id="param-repeat" type="number" min="1" max="2" step="0.05" value="1.0" />
+            <small>Riduce la probabilità dei token già usati nel contesto.</small>
+          </label>
+          <label>Seed <input id="param-seed" type="number" step="1" value="42" />
+            <small>Seed del campionamento deterministico (solo modalità Sample).</small>
+          </label>
+          <label>Top-N <input id="param-topn" type="number" min="1" max="20" step="1" value="5" />
+            <small>Numero di candidati mostrati nella classifica.</small>
+          </label>
           <label>Modalità calcolo
             <select id="param-cachemode" data-testid="param-cachemode">
               <option value="cache">KV cache</option>
               <option value="naive">Ricalcolo completo (naive)</option>
             </select>
+            <small>KV cache: il modello ricalcola solo i token nuovi. Naive: ricalcola tutta la sequenza.</small>
           </label>
         </div>
         <p id="params-error" class="error" data-testid="params-error" hidden></p>
       </details>
+
+      <details id="tech-panel" class="params" data-testid="tech-panel">
+        <summary>Informazioni tecniche</summary>
+        <dl class="tech-info">
+          <dt>Modello</dt><dd id="tech-model">distilgpt2</dd>
+          <dt>Formato</dt><dd>ONNX quantizzato (q8)</dd>
+          <dt>Tokenizer</dt><dd id="tech-tokenizer">GPT-2 BPE</dd>
+          <dt>Vocabolario</dt><dd id="tech-vocab">50.257 token</dd>
+          <dt>Contesto massimo</dt><dd>1.024 token</dd>
+          <dt>Runtime</dt><dd id="tech-runtime">reale (Transformers.js) / mock deterministico</dd>
+          <dt>Backend</dt><dd id="tech-backend">WebGPU / WASM</dd>
+        </dl>
+      </details>
     </section>
 
     <section class="results" id="results" data-testid="results">
-      <h2>Tokens</h2>
-      <h3 class="preview-title">Tokenizzazione del prompt</h3>
+      <h2>Tokenizzazione del prompt</h2>
       <div id="prompt-preview" data-testid="prompt-preview" class="token-sequence preview"></div>
+      <p id="preview-meta" class="preview-meta" data-testid="preview-meta"></p>
+      <p class="note">Nota: i token non coincidono necessariamente con le parole — possono contenere spazi (␠), parti di parole o punteggiatura.</p>
 
-      <h3 class="preview-title">Sequenza completa</h3>
+      <h2>Sequenza completa</h2>
       <div id="token-sequence" data-testid="token-sequence" class="token-sequence empty"></div>
 
       <p id="context-message" data-testid="context-message" class="context-message" hidden></p>
 
+      <div class="cache-status" id="cache-status" data-testid="cache-status" hidden>
+        <div>Contesto logico: <strong id="cache-logical"></strong> token</div>
+        <div>Calcolo corrente: <strong id="cache-current"></strong></div>
+        <div>KV cache: <strong id="cache-active"></strong></div>
+      </div>
+
       <div id="step-result" data-testid="step-result" hidden>
-        <h2>Token scelto</h2>
-        <p id="chosen-token" class="chosen-token"></p>
+        <h2>Token successivo scelto</h2>
+        <div class="chosen-card" data-testid="chosen-card">
+          <span class="chosen-big" id="chosen-big"></span>
+          <dl class="chosen-meta">
+            <dt>Token ID</dt><dd id="chosen-id"></dd>
+            <dt>Probabilità</dt><dd id="chosen-prob"></dd>
+            <dt>Rank</dt><dd id="chosen-rank"></dd>
+          </dl>
+        </div>
+
+        <h3 class="ranking-title">Distribuzione del prossimo token</h3>
         <table class="ranking">
           <thead>
             <tr><th>Rank</th><th>Token</th><th>Token ID</th><th>Probabilità</th></tr>
           </thead>
           <tbody id="ranking-body" data-testid="ranking-body"></tbody>
         </table>
+        <p id="params-applied" class="preview-meta" data-testid="params-applied"></p>
       </div>
 
-      <p id="cache-message" data-testid="cache-message" class="cache-message" hidden></p>
+      <p id="eos-message" class="context-message eos-message" data-testid="eos-message" hidden>
+        Token EOS generato. La sequenza è terminata.
+      </p>
 
       <div class="buttons bottom-cta">
         <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary" disabled>
