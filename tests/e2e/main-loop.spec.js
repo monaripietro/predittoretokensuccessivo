@@ -28,6 +28,12 @@ test.describe('Ciclo principale (mock)', () => {
     const first = chips.first();
     expect(await first.getAttribute('title')).toContain('Token ID:');
     expect(await first.textContent()).not.toMatch(/^<tok-\d+>$/);
+    // ogni chip mostra il badge con il token ID
+    const ids = await page.getByTestId('prompt-preview').locator('.chip-id').allTextContents();
+    expect(ids.length).toBe(3);
+    for (const id of ids) expect(id).toMatch(/^\d+$/);
+    // conteggio token nella preview
+    await expect(page.locator('.preview-count')).toHaveText('3 token');
   });
 
   test('primo click: token, ID, ranking e percentuali visibili', async ({ page }) => {

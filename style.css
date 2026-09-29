@@ -189,6 +189,35 @@ tr.chosen-row td .tag {
 
 .token-sequence.preview { min-height: 1.6rem; padding: 0.45rem; }
 
+.token-sequence.preview .chip.prompt {
+  background: hsl(var(--chip-h, 210) 45% 24%);
+  border-color: hsl(var(--chip-h, 210) 45% 45%);
+  color: hsl(var(--chip-h, 210) 80% 85%);
+}
+.token-sequence.preview .chip.prompt:nth-child(5n+1) { --chip-h: 210; }
+.token-sequence.preview .chip.prompt:nth-child(5n+2) { --chip-h: 160; }
+.token-sequence.preview .chip.prompt:nth-child(5n+3) { --chip-h: 265; }
+.token-sequence.preview .chip.prompt:nth-child(5n+4) { --chip-h: 25; }
+.token-sequence.preview .chip.prompt:nth-child(5n+5) { --chip-h: 320; }
+
+.chip-id {
+  font-size: 0.68rem;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+  padding: 0 0.28rem;
+  margin-left: 0.15rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-count {
+  align-self: center;
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .bottom-cta {
   margin-top: 1.5rem;
   padding-top: 1rem;
