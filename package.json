@@ -1,0 +1,24 @@
+{
+  "name": "next-token-lab",
+  "version": "1.0.0",
+  "description": "Demo didattica del ciclo autoregressivo di un piccolo LLM locale nel browser.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "serve:e2e": "vite preview --port 4173 --strictPort"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "jsdom": "^25.0.1",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.3.0"
+  }
+}
