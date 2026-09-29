@@ -388,3 +388,22 @@ test.describe('Input del prossimo calcolo', () => {
     await expect(page.getByTestId('next-step-panel')).toBeHidden();
   });
 });
+
+test.describe('Frase in linguaggio naturale', () => {
+  test('il pannello mostra il contesto decodificato senza chip', async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+    await page.getByTestId('prompt').fill('Il cielo è');
+    await page.getByTestId('btn-next').click();
+    const natural = page.getByTestId('next-step-natural');
+    await expect(natural).toBeVisible();
+    await expect(natural).toContainText('In linguaggio naturale:');
+    const text = await natural.textContent();
+    expect(text).toContain('Il cielo è');
+    await page.getByTestId('btn-next-bottom').click();
+    const chips = await page.getByTestId('next-step-context').locator('.chip').count();
+    const seqText = await natural.textContent();
+    expect(seqText).not.toContain('[');
+    expect(chips).toBeGreaterThan(3);
+  });
+});
