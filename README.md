@@ -70,6 +70,7 @@ Il pannello *KV cache* separa tre livelli: **contesto logico** (tutti i token, p
 - **Cronologia dei passi**: tabella richiudibile con passo, token, ID, probabilità, rank, contesto e delta di probabilità rispetto allo step precedente, esportabile in JSON con "Esporta cronologia".
 - **Preset di prompt**: esempi cliccabili sotto la textarea per partire subito.
 - **Animazione**: il token appena aggiunto alla sequenza compare con una breve animazione `pop-in`.
+- **Input del prossimo calcolo**: pannello dedicato che mostra la sequenza esatta (prompt + token generati) che il modello userà per il calcolo successivo, con l'ultimo token evidenziato e il pulsante "Calcola il token dopo «...»" al suo interno. Rende esplicito il ciclo: contesto corrente → calcolo → classifica → token scelto → contesto esteso. La cronologia conserva l'`inputIds` di ogni passo, verificabile come `step N+1 = step N + token scelto`.
 
 ## Browser consigliati
 

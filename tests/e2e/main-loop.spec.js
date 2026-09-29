@@ -225,7 +225,7 @@ test.describe('Termine generazione (EOS)', () => {
     const btnBottom = page.getByTestId('btn-next-bottom');
     await btnBottom.click();
     await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
-    await expect(btnBottom).toContainText('Calcola token successivo');
+    await expect(btnBottom).toContainText('Calcola il token dopo');
     await page.getByTestId('btn-reset').click();
     await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
     await expect(page.getByTestId('btn-next')).toBeDisabled();
@@ -332,5 +332,59 @@ test.describe('Pulsante inferiore', () => {
     expect(await btn.isDisabled()).toBe(true);
     await page.getByTestId('prompt').fill('a b c');
     expect(await btn.isDisabled()).toBe(await btnBottom.isDisabled());
+  });
+});
+
+test.describe('Input del prossimo calcolo', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+  });
+
+  test('il pannello mostra il contesto esteso dopo il primo token', async ({ page }) => {
+    await page.getByTestId('prompt').fill('Il cielo è');
+    await page.getByTestId('btn-next').click();
+    const sequence = page.getByTestId('token-sequence');
+    const nextContext = page.getByTestId('next-step-context');
+    await expect(page.getByTestId('next-step-panel')).toBeVisible();
+    await expect(nextContext).toBeVisible();
+    const firstCount = await sequence.locator('.chip').count();
+    const firstGenerated = await sequence.locator('.chip.generated').last().getAttribute('data-token-id');
+    await expect(nextContext.locator('.chip.generated').last()).toHaveAttribute('data-token-id', firstGenerated);
+    await expect(page.getByTestId('next-step-context')).toBeVisible();
+    await expect(page.getByTestId('next-step-explanation')).toContainText('token di contesto');
+    await page.getByTestId('btn-next-bottom').click();
+    await expect.poll(async () => sequence.locator('.chip').count()).toBe(firstCount + 1);
+    const contextTokens = await nextContext.locator('.chip').count();
+    expect(contextTokens).toBe(firstCount + 1);
+    await expect(page.getByTestId('ranking-body')).toBeVisible();
+  });
+
+  test('il pulsante inferiore indica l\'ultimo token generato', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    await expect(page.getByTestId('btn-next-bottom')).toContainText('Calcola il token dopo «');
+  });
+
+  test('cronologia: input di ogni passo coerente con contesto autoregressivo', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b c');
+    await page.getByTestId('btn-next').click();
+    await page.getByTestId('btn-next-bottom').click();
+    await page.getByTestId('btn-next-bottom').click();
+    const rows = page.getByTestId('history-body').locator('tr');
+    await expect(rows).toHaveCount(3);
+    const contexts = [];
+    for (const row of await rows.all()) {
+      contexts.push(parseInt(await row.locator('td').nth(5).textContent(), 10));
+    }
+    expect(contexts).toEqual([4, 5, 6]);
+  });
+
+  test('reset nasconde il pannello del prossimo calcolo', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    await expect(page.getByTestId('next-step-panel')).toBeVisible();
+    await page.getByTestId('btn-reset').click();
+    await expect(page.getByTestId('next-step-panel')).toBeHidden();
   });
 });
