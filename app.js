@@ -354,6 +354,10 @@ function renderNextStepContext() {
   explanation.textContent =
     `Il modello userà questi ${context.length} token di contesto per calcolare `
     + `il token in posizione ${nextPosition}.`;
+  const natural = ui('next-step-natural');
+  if (natural) {
+    natural.textContent = `In linguaggio naturale: “${runtime.decode(context)}”`;
+  }
   panel.hidden = false;
 }
 
