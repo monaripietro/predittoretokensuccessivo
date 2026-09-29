@@ -17,6 +17,7 @@ const state = {
   mode: 'cache',
   cacheState: null,
   history: [],
+  eosReached: false,
   error: null,
 };
 
@@ -83,19 +84,26 @@ function updateButton() {
   const btnBottom = ui.btnNextBottom();
   const promptEmpty = !ui.prompt().value.trim();
   const modelReady = state.modelStatus === 'ready';
-  const disabled = state.isBusy || promptEmpty || !modelReady;
+  const disabled = state.isBusy || promptEmpty || !modelReady || state.eosReached;
+  const label = state.eosReached
+    ? 'Generazione terminata (EOS)'
+    : state.isBusy ? 'Calcolo…' : 'Calcola token successivo';
   btn.disabled = disabled;
-  btn.textContent = state.isBusy ? 'Calcolo…' : 'Calcola token successivo';
+  btn.textContent = label;
   if (btnBottom) {
     const started = state.stepIndex > 0;
     btnBottom.disabled = disabled || !started;
-    btnBottom.textContent = state.isBusy ? 'Calcolo…' : started
-      ? `Calcola token successivo (continua con ${state.contextTokens.length} token di contesto)`
-      : 'Calcola token successivo';
+    btnBottom.textContent = state.eosReached
+      ? 'Generazione terminata (EOS)'
+      : state.isBusy ? 'Calcolo…'
+        : started
+          ? `Calcola token successivo (continua con ${state.contextTokens.length} token di contesto)`
+          : 'Calcola token successivo';
   }
 }
 
 function invalidateGeneration() {
+  state.eosReached = false;
   state.generatedTokens = [];
   state.contextTokens = state.promptTokens.slice();
   state.ranking = null;
@@ -319,6 +327,7 @@ async function nextStep() {
     ui.hint().hidden = true;
 
     if (step.isEos) {
+      state.eosReached = true;
       showError('Raggiunto il token EOS: la generazione è terminata.');
     }
     renderCacheMessage(step.newTokens);
@@ -331,6 +340,7 @@ async function nextStep() {
 }
 
 function reset() {
+  state.eosReached = false;
   state.promptTokens = [];
   state.generatedTokens = [];
   state.contextTokens = [];
