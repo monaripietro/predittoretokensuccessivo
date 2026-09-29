@@ -21,6 +21,15 @@ test.describe('Ciclo principale (mock)', () => {
     await expect(page.getByTestId('btn-next')).toBeDisabled();
   });
 
+  test('prompt mostrato come token e ID prima del calcolo', async ({ page }) => {
+    await page.getByTestId('prompt').fill('Il cielo è');
+    const chips = page.getByTestId('prompt-preview').locator('.chip');
+    await expect(chips).toHaveCount(3);
+    const first = chips.first();
+    expect(await first.getAttribute('title')).toContain('Token ID:');
+    expect(await first.textContent()).not.toMatch(/^<tok-\d+>$/);
+  });
+
   test('primo click: token, ID, ranking e percentuali visibili', async ({ page }) => {
     await page.getByTestId('prompt').fill('Il cielo è');
     await page.getByTestId('btn-next').click();
@@ -119,5 +128,46 @@ test.describe('Errori runtime', () => {
     await page.getByTestId('btn-reset').click();
     await expect(page.getByTestId('error')).toBeHidden();
     await expect(page.getByTestId('btn-next')).toBeDisabled();
+  });
+});
+
+test.describe('Loop ricorsivo e pulsante in fondo', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+  });
+
+  test('il pulsante in fondo è disabilitato prima del primo calcolo', async ({ page }) => {
+    await expect(page.getByTestId('btn-next-bottom')).toBeDisabled();
+  });
+
+  test('dieci click dal pulsante in fondo: contesto cresce di uno per passo', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b c');
+    await page.getByTestId('btn-next').click();
+    await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(4);
+    for (let i = 2; i <= 10; i++) {
+      await page.getByTestId('btn-next-bottom').click();
+      await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(3 + i);
+    }
+    const msg = await page.getByTestId('context-message').textContent();
+    expect(msg).toContain('13 token di contesto');
+    expect(await page.getByTestId('btn-next-bottom').isEnabled()).toBe(true);
+  });
+
+  test('ranking limitato a 5 risultati di default con testo leggibile', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const rows = page.getByTestId('ranking-body').locator('tr');
+    await expect(rows).toHaveCount(5);
+    const first = await rows.first().locator('.token-text').textContent();
+    expect(first).not.toMatch(/^<tok-\d+>$/);
+  });
+
+  test('token scelto mostra testo e ID insieme', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const chosen = await page.getByTestId('step-result').locator('.chosen-token').textContent();
+    expect(chosen).toMatch(/· ID \d+ ·/);
+    expect(chosen).not.toMatch(/<tok-\d+>/);
   });
 });

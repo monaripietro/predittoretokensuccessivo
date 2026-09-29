@@ -10,6 +10,17 @@ const SPECIAL_TOKENS = {
   '<eos>': 1,
 };
 
+const FALLBACK_WORDS = [
+  'il', 'lo', 'la', 'uno', 'una', 'che', 'di', 'a', 'da', 'in', 'con',
+  'su', 'per', 'tra', 'fra', 'cielo', 'sole', 'luna', 'mare', 'vento',
+  'albero', 'fiore', 'notte', 'giorno', 'luce', 'ombra', 'acqua', 'fuoco',
+  'terra', 'aria', 'montagna', 'strada', 'casa', 'porta', 'finestra',
+  'libro', 'parola', 'storia', 'tempo', 'momento', 'ricordo', 'sogno',
+  'pensiero', 'cuore', 'voce', 'silenzio', 'musica', 'colore', 'verde',
+  'blu', 'rosso', 'giallo', 'bianco', 'nero', 'nuvola', 'pioggia', 'neve',
+  'estate', 'inverno', 'primavera', 'autunno', 'città', 'ponte', 'fiume',
+];
+
 function stableHash(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -31,13 +42,14 @@ export class MockTokenizer {
     if (this.vocab.has(token)) return this.vocab.get(token);
     const id = 2 + (stableHash(token) % (VOCAB_SIZE - 2));
     this.vocab.set(token, id);
-    this.invVocab.set(id, token);
+    if (!this.invVocab.has(id)) this.invVocab.set(id, token);
     return id;
   }
 
   idToToken(id) {
     if (this.invVocab.has(id)) return this.invVocab.get(id);
-    const token = `<tok-${id}>`;
+    // Token generato non presente nel testo: parola leggibile deterministica.
+    const token = FALLBACK_WORDS[stableHash(String(id)) % FALLBACK_WORDS.length];
     this.invVocab.set(id, token);
     return token;
   }

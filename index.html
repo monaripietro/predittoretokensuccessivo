@@ -56,7 +56,7 @@
           <label>Min-p <input id="param-minp" type="number" min="0" max="1" step="0.01" value="0" /></label>
           <label>Repeat penalty <input id="param-repeat" type="number" min="1" max="2" step="0.05" value="1.0" /></label>
           <label>Seed <input id="param-seed" type="number" step="1" value="42" /></label>
-          <label>Top-N <input id="param-topn" type="number" min="1" max="20" step="1" value="10" /></label>
+          <label>Top-N <input id="param-topn" type="number" min="1" max="20" step="1" value="5" /></label>
           <label>Modalità calcolo
             <select id="param-cachemode" data-testid="param-cachemode">
               <option value="cache">KV cache</option>
@@ -70,6 +70,10 @@
 
     <section class="results" id="results" data-testid="results">
       <h2>Tokens</h2>
+      <h3 class="preview-title">Tokenizzazione del prompt</h3>
+      <div id="prompt-preview" data-testid="prompt-preview" class="token-sequence preview"></div>
+
+      <h3 class="preview-title">Sequenza completa</h3>
       <div id="token-sequence" data-testid="token-sequence" class="token-sequence empty"></div>
 
       <p id="context-message" data-testid="context-message" class="context-message" hidden></p>
@@ -86,6 +90,12 @@
       </div>
 
       <p id="cache-message" data-testid="cache-message" class="cache-message" hidden></p>
+
+      <div class="buttons bottom-cta">
+        <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary" disabled>
+          Calcola token successivo
+        </button>
+      </div>
     </section>
   </main>
 

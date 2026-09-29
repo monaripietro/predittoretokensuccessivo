@@ -178,3 +178,23 @@ tr.chosen-row td .tag {
 }
 
 .hidden { display: none !important; }
+
+.preview-title {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 1.1rem 0 0.4rem;
+}
+
+.token-sequence.preview { min-height: 1.6rem; padding: 0.45rem; }
+
+.bottom-cta {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.token-text { font-family: ui-monospace, monospace; }
+
+h2 { margin-bottom: 0.4rem; }
