@@ -35,6 +35,13 @@
       <textarea id="prompt" data-testid="prompt" rows="3"
         placeholder="Scrivi un prompt breve, ad esempio: Il cielo è"></textarea>
 
+      <div class="presets" data-testid="presets">
+        <span class="presets-label">Esempi:</span>
+        <button type="button" class="preset" data-prompt="Il cielo è">Il cielo è</button>
+        <button type="button" class="preset" data-prompt="Roma è la capitale">Roma è la capitale</button>
+        <button type="button" class="preset" data-prompt="C'era una volta una piccola">C'era una volta…</button>
+      </div>
+
       <div class="buttons">
         <button id="btn-next" data-testid="btn-next" class="primary" disabled>
           Calcola token successivo
@@ -148,6 +155,23 @@
           <tbody id="ranking-body" data-testid="ranking-body"></tbody>
         </table>
         <p id="params-applied" class="preview-meta" data-testid="params-applied"></p>
+
+        <details id="history-panel" class="params" data-testid="history-panel">
+          <summary>Cronologia dei passi</summary>
+          <div class="history-scroll">
+            <table class="history-table">
+              <thead>
+                <tr><th>Passo</th><th>Token</th><th>ID</th><th>Prob.</th><th>Rank</th><th>Contesto</th><th>Δ prob. step prec.</th></tr>
+              </thead>
+              <tbody id="history-body" data-testid="history-body"></tbody>
+            </table>
+          </div>
+          <div class="buttons">
+            <button id="btn-export" data-testid="btn-export" class="secondary" type="button">
+              Esporta cronologia (JSON)
+            </button>
+          </div>
+        </details>
       </div>
 
       <p id="eos-message" class="context-message eos-message" data-testid="eos-message" hidden>

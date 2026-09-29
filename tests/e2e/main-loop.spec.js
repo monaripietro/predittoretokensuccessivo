@@ -231,3 +231,58 @@ test.describe('Termine generazione (EOS)', () => {
     await expect(page.getByTestId('btn-next')).toBeDisabled();
   });
 });
+
+test.describe('Miglioramenti a priorità bassa', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('./?mock');
+    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+  });
+  test('barre probabilità presenti nella classifica', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    const bars = page.getByTestId('ranking-body').locator('.prob-bar');
+    await expect(bars).toHaveCount(5);
+    const firstFill = bars.first().locator('.prob-bar-fill');
+    await expect(firstFill).toHaveAttribute('style', /width:\d+%/);
+  });
+
+  test('preset prompt: cliccare un esempio riempie la textarea e abilita il pulsante', async ({ page }) => {
+    await page.locator('.preset').first().click();
+    await expect(page.getByTestId('prompt')).toHaveValue('Il cielo è');
+    await expect(page.getByTestId('btn-next')).toBeEnabled();
+  });
+
+  test('cronologia: righe con passo, token, contesto e delta dal secondo step', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b c');
+    await page.getByTestId('btn-next').click();
+    await page.getByTestId('btn-next-bottom').click();
+    await page.getByTestId('btn-next-bottom').click();
+    const rows = page.getByTestId('history-body').locator('tr');
+    await expect(rows).toHaveCount(3);
+    const firstDelta = await rows.first().locator('td').nth(6).textContent();
+    expect(firstDelta).toBe('—');
+    const secondDelta = await rows.nth(1).locator('td').nth(6).textContent();
+    expect(secondDelta).toMatch(/^[+−]\d+,\d+%$/);
+  });
+
+  test('esportazione cronologia: click genera download JSON', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    await page.getByTestId('btn-next').click();
+    await page.locator('#history-panel summary').click();
+    const download = page.waitForEvent('download');
+    await page.getByTestId('btn-export').click();
+    const dl = await download;
+    expect(dl.suggestedFilename()).toBe('next-token-lab-cronologia.json');
+  });
+
+  test('animazione: il token appena generato ha la classe just-added', async ({ page }) => {
+    await page.getByTestId('prompt').fill('a b');
+    const lastChip = page.getByTestId('token-sequence').locator('.chip.last-generated');
+    const classPromise = lastChip.evaluate((el) => new Promise((resolve) => {
+      if (el.classList.contains('just-added')) resolve(true);
+      else el.addEventListener('animationend', () => resolve(el.classList.contains('just-added')));
+    }));
+    await page.getByTestId('btn-next').click();
+    expect(await classPromise).toBe(true);
+  });
+});

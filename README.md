@@ -64,6 +64,13 @@ I token sono visualizzati in forma leggibile: gli spazi sono mostrati come `␠`
 
 Il pannello *KV cache* separa tre livelli: **contesto logico** (tutti i token, prompt + generati), **calcolo corrente** (token effettivamente inviati al modello in questo step: 1 con cache, tutti in naive) e **stato cache** (attiva / non usata). Nessuna metrica non misurata dal runtime viene mostrata.
 
+## Altri strumenti didattici
+
+- **Barre probabilità**: ogni riga della classifica ha una barra proporzionale al candidato più probabile.
+- **Cronologia dei passi**: tabella richiudibile con passo, token, ID, probabilità, rank, contesto e delta di probabilità rispetto allo step precedente, esportabile in JSON con "Esporta cronologia".
+- **Preset di prompt**: esempi cliccabili sotto la textarea per partire subito.
+- **Animazione**: il token appena aggiunto alla sequenza compare con una breve animazione `pop-in`.
+
 ## Browser consigliati
 
 - Chrome/Edge 113+ (WebGPU)

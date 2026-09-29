@@ -227,30 +227,46 @@ function renderSequence() {
   }
   const promptLen = state.promptTokens.length;
   const genLen = state.generatedTokens.length;
+  const animate = state.animateNext && genLen > 0;
   context.forEach((id, i) => {
     let kind;
+    let justAdded = false;
     if (i < promptLen) kind = 'prompt';
-    else if (i === context.length - 1 && genLen > 0) kind = 'generated last-generated';
-    else kind = 'generated';
-    box.appendChild(makeChip('', id, i, kind));
+    else if (i === context.length - 1 && genLen > 0) {
+      kind = 'generated last-generated';
+      justAdded = animate;
+    } else kind = 'generated';
+    const chip = makeChip('', id, i, kind);
+    if (justAdded) {
+      chip.classList.add('just-added');
+      chip.addEventListener('animationend', () => chip.classList.remove('just-added'), { once: true });
+    }
+    box.appendChild(chip);
   });
+  state.animateNext = false;
 }
 
 function renderRanking() {
   const body = ui('ranking-body');
   body.innerHTML = '';
   const ranking = state.ranking || [];
+  const maxProb = ranking.length > 0 ? Math.max(...ranking.map((c) => c.prob)) : 1;
   ranking.forEach((c, i) => {
     const tr = document.createElement('tr');
     if (c.tokenId === state.selectedToken?.tokenId) tr.classList.add('chosen-row');
     const chosenTag = c.tokenId === state.selectedToken?.tokenId
       ? ' <span class="tag">✓ scelto</span>' : '';
     const tokenText = escapeHtml(displayTokenText(c.tokenId));
+    const pct = (c.prob * 100).toFixed(1).replace('.', ',');
+    const width = Math.max(2, Math.round((c.prob / maxProb) * 100));
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td><span class="token-text">${tokenText}</span>${chosenTag}</td>
       <td>${c.tokenId}</td>
-      <td class="prob">${(c.prob * 100).toFixed(1).replace('.', ',')}%</td>`;
+      <td class="prob-cell">
+        <span class="prob-bar" aria-hidden="true"><span class="prob-bar-fill" style="width:${width}%"></span></span>
+        <span class="prob">${pct}%</span>
+      </td>`;
     body.appendChild(tr);
   });
   if (state.selectedToken) {
@@ -362,7 +378,8 @@ async function nextStep() {
     state.contextTokens = state.promptTokens.concat(state.generatedTokens);
     state.stepIndex += 1;
     state.cacheState = step.cache;
-    state.history.push({ step: state.stepIndex, tokenId: step.chosen.tokenId, prob: state.selectedProbability });
+    state.history.push({ step: state.stepIndex, tokenId: step.chosen.tokenId, prob: state.selectedProbability, rank: state.selectedRank, contextLength: state.contextTokens.length });
+    renderHistory();
     committedPromptId.value = ui('prompt').value;
     state.isStale = false;
     ui('prompt-hint').hidden = true;
@@ -376,6 +393,7 @@ async function nextStep() {
     if (step.isEos) {
       state.eosReached = true;
     }
+    state.animateNext = true;
     renderCacheStatus(step.newTokens);
     render();
   } catch (err) {
@@ -383,6 +401,57 @@ async function nextStep() {
   } finally {
     setBusy(false);
   }
+}
+
+function renderHistory() {
+  const body = ui('history-body');
+  if (!body) return;
+  body.innerHTML = '';
+  state.history.forEach((h, i) => {
+    const tr = document.createElement('tr');
+    const prev = i > 0 ? state.history[i - 1] : null;
+    let deltaText = '—';
+    let deltaClass = '';
+    if (prev) {
+      const d = h.prob - prev.prob;
+      const sign = d >= 0 ? '+' : '−';
+      deltaText = `${sign}${(Math.abs(d) * 100).toFixed(1).replace('.', ',')}%`;
+      deltaClass = d >= 0 ? 'delta-up' : 'delta-down';
+    }
+    tr.innerHTML = `
+      <td>${h.step}</td>
+      <td><span class="token-text">${escapeHtml(displayTokenText(h.tokenId))}</span></td>
+      <td>${h.tokenId}</td>
+      <td>${(h.prob * 100).toFixed(1).replace('.', ',')}%</td>
+      <td>${h.rank !== null && h.rank !== undefined ? `#${h.rank}` : '—'}</td>
+      <td>${h.contextLength}</td>
+      <td class="${deltaClass}">${deltaText}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function exportHistory() {
+  const data = {
+    prompt: state.promptText,
+    runtime: runtimeKind,
+    backend: state.backend,
+    steps: state.history.map((h, i) => ({
+      step: h.step,
+      tokenId: h.tokenId,
+      tokenText: runtime ? runtime.idToToken(h.tokenId) : null,
+      probability: h.prob,
+      rank: h.rank,
+      contextLength: h.contextLength,
+      deltaProbability: i > 0 ? h.prob - state.history[i - 1].prob : null,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'next-token-lab-cronologia.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function reset() {
@@ -414,11 +483,21 @@ function reset() {
   seq.classList.remove('stale');
   ui('prompt-preview').innerHTML = '';
   ui('preview-meta').textContent = '';
+  renderHistory();
   clearError();
   updateButton();
 }
 
+function applyPreset(prompt) {
+  ui('prompt').value = prompt;
+  ui('prompt').dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function init() {
+  document.querySelectorAll('.preset').forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.prompt));
+  });
+  ui('btn-export')?.addEventListener('click', exportHistory);
   ui('btn-next').addEventListener('click', nextStep);
   ui('btn-next-bottom')?.addEventListener('click', nextStep);
   ui('btn-reset').addEventListener('click', reset);
