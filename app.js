@@ -1,4 +1,5 @@
 import { MockRuntime, computeStep } from './src/mockRuntime.js';
+import { RealRuntime } from './src/realRuntime.js';
 import { validateParams } from './src/sampling.js';
 
 const state = {
