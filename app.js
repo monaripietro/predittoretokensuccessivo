@@ -21,6 +21,9 @@ const state = {
   eosReached: false,
   isStale: false,
   error: null,
+  activeCalculationContext: [],
+  calculationPhase: 'idle',
+  lastCalculationInput: [],
 };
 
 const ui = (id) => document.getElementById(id);
@@ -105,10 +108,26 @@ function updateButton() {
   btn.textContent = label;
   btn.classList.toggle('highlight', state.isStale && !disabled);
   if (btnBottom) {
-    btnBottom.disabled = disabled;
-    btnBottom.textContent = label;
+    btnBottom.disabled = disabled || state.contextTokens.length === 0;
+    btnBottom.textContent = nextButtonLabel();
     btnBottom.classList.toggle('highlight', state.isStale && !disabled);
   }
+}
+
+function formatTokenForUi(text) {
+  const visible = String(text)
+    .replace(/ /g, '␠')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t');
+  return `«${visible}»`;
+}
+
+function nextButtonLabel() {
+  if (state.eosReached) return 'Generazione terminata';
+  if (state.isBusy) return 'Calcolo…';
+  if (state.generatedTokens.length === 0) return 'Calcola token successivo';
+  const lastId = state.generatedTokens.at(-1);
+  return `Calcola il token dopo ${formatTokenForUi(displayTokenText(lastId))}`;
 }
 
 function invalidateGeneration() {
@@ -311,14 +330,108 @@ function renderCacheStatus(newTokens) {
   box.hidden = false;
 }
 
+function renderNextStepContext() {
+  const panel = ui('next-step-panel');
+  const contextBox = ui('next-step-context');
+  const explanation = ui('next-step-explanation');
+  if (!panel || !contextBox) return;
+  const context = state.contextTokens ?? [];
+  if (context.length === 0) {
+    panel.hidden = true;
+    return;
+  }
+  contextBox.innerHTML = '';
+  const promptLength = state.promptTokens.length;
+  context.forEach((tokenId, index) => {
+    const kind = index < promptLength ? 'prompt' : 'generated';
+    const chip = makeChip('', tokenId, index, kind);
+    if (index === context.length - 1 && index >= promptLength) {
+      chip.classList.add('last-context-token');
+    }
+    contextBox.appendChild(chip);
+  });
+  const nextPosition = context.length + 1;
+  explanation.textContent =
+    `Il modello userà questi ${context.length} token di contesto per calcolare `
+    + `il token in posizione ${nextPosition}.`;
+  panel.hidden = false;
+}
+
 function render() {
+  renderPromptPreview(state.promptTokens);
   renderSequence();
+  renderNextStepContext();
   renderRanking();
   renderContextMessage();
+  renderHistory();
   const hasResult = state.selectedToken !== null;
   ui('step-result').hidden = !hasResult;
   ui('eos-message').hidden = !state.eosReached;
   updateButton();
+}
+
+function prepareContextForCalculation() {
+  const prompt = ui('prompt').value.trim();
+  if (!prompt) {
+    throw new Error('Inserisci un prompt.');
+  }
+  const currentPromptTokens = runtime.encode(prompt);
+  const promptChanged = committedPromptId.value !== prompt;
+  if (promptChanged) {
+    state.promptText = prompt;
+    state.promptTokens = currentPromptTokens;
+    state.generatedTokens = [];
+    state.contextTokens = currentPromptTokens.slice();
+    state.cacheState = null;
+    state.history = [];
+    state.stepIndex = 0;
+    state.eosReached = false;
+  }
+  if (state.contextTokens.length === 0) {
+    state.promptTokens = currentPromptTokens;
+    state.contextTokens = currentPromptTokens.slice();
+  }
+  if (state.contextTokens.length === 0) {
+    throw new Error('Il prompt non produce token validi.');
+  }
+  renderPromptPreview(state.promptTokens);
+  renderNextStepContext();
+}
+
+function applyStepResult(step, values) {
+  if (!step?.chosen) {
+    throw new Error('Il modello non ha prodotto un token valido.');
+  }
+  const chosen = step.chosen;
+  state.ranking = step.ranking;
+  state.selectedToken = chosen;
+  state.selectedProbability =
+    step.ranking.find((c) => c.tokenId === chosen.tokenId)?.prob ?? chosen.prob;
+  state.selectedRank = step.ranking.findIndex((c) => c.tokenId === chosen.tokenId) + 1 || null;
+  state.generatedTokens.push(chosen.tokenId);
+  state.contextTokens = [...state.promptTokens, ...state.generatedTokens];
+  state.stepIndex += 1;
+  state.cacheState = state.mode === 'cache' ? step.cache : null;
+  state.eosReached = Boolean(step.isEos);
+  state.history.push({
+    step: state.stepIndex,
+    tokenId: chosen.tokenId,
+    prob: state.selectedProbability,
+    rank: state.selectedRank,
+    inputIds: state.lastCalculationInput.slice(),
+    outputId: chosen.tokenId,
+    contextLength: state.contextTokens.length,
+  });
+  committedPromptId.value = ui('prompt').value.trim();
+  state.isStale = false;
+  ui('prompt-hint').hidden = true;
+  ui('params-hint').hidden = true;
+  const p = { ...values };
+  ui('params-applied').textContent =
+    `Parametri applicati: temperatura ${p.temperature} · top-k ${p.topK} · top-p ${p.topP} · min-p ${p.minP} · repeat penalty ${p.repeatPenalty}`
+    + (p.mode === 'sample' ? ` · sample (seed ${p.seed})` : ' · greedy');
+  state.animateNext = true;
+  renderCacheStatus(step.newTokens);
 }
 
 async function nextStep() {
@@ -338,61 +451,32 @@ async function nextStep() {
 
   setBusy(true);
   try {
-    const promptChanged = committedPromptId.value !== prompt;
-    if (promptChanged) {
-      state.promptText = prompt;
-      state.promptTokens = runtime.encode(prompt);
-      state.isStale = false;
-      invalidateGeneration();
-      renderSequence();
-    } else if (state.contextTokens.length === 0) {
-      state.promptTokens = runtime.encode(prompt);
-      state.contextTokens = state.promptTokens.slice();
-    }
+    prepareContextForCalculation();
 
-    if (state.contextTokens.length === 0) {
-      throw new Error('Il prompt non produce token validi.');
-    }
+    state.lastCalculationInput = state.contextTokens.slice();
+    state.activeCalculationContext = state.contextTokens.slice();
+    state.calculationPhase = state.stepIndex === 0
+      ? 'calculating-first-token'
+      : 'calculating-next-token';
 
     const cache = state.mode === 'cache' ? state.cacheState : null;
     const step = await computeStep(runtime, {
-      contextIds: state.contextTokens,
+      contextIds: state.activeCalculationContext,
       params: { ...values },
       cache,
     });
 
-    state.selectedToken = step.chosen;
-    state.selectedProbability = step.chosen
-      ? step.ranking.find((c) => c.tokenId === step.chosen.tokenId)?.prob ?? step.chosen.prob
-      : null;
-    state.selectedRank = step.chosen
-      ? (step.ranking.findIndex((c) => c.tokenId === step.chosen.tokenId) + 1) || null
-      : null;
-    state.ranking = step.ranking;
-    state.generatedTokens.push(step.chosen.tokenId);
-    state.contextTokens = state.promptTokens.concat(state.generatedTokens);
-    state.stepIndex += 1;
-    state.cacheState = step.cache;
-    state.history.push({ step: state.stepIndex, tokenId: step.chosen.tokenId, prob: state.selectedProbability, rank: state.selectedRank, contextLength: state.contextTokens.length });
-    renderHistory();
-    committedPromptId.value = ui('prompt').value;
-    state.isStale = false;
-    ui('prompt-hint').hidden = true;
-    ui('params-hint').hidden = true;
-
-    const p = { ...values };
-    ui('params-applied').textContent =
-      `Parametri applicati: temperatura ${p.temperature} · top-k ${p.topK} · top-p ${p.topP} · min-p ${p.minP} · repeat penalty ${p.repeatPenalty}`
-      + (p.mode === 'sample' ? ` · sample (seed ${p.seed})` : ' · greedy');
-
-    if (step.isEos) {
-      state.eosReached = true;
-    }
-    state.animateNext = true;
-    renderCacheStatus(step.newTokens);
+    applyStepResult(step, values);
+    state.calculationPhase = state.eosReached
+      ? 'eos'
+      : state.stepIndex === 1
+        ? 'first-token-ready'
+        : 'next-token-ready';
     render();
   } catch (err) {
+    state.calculationPhase = 'error';
     showError(`Errore runtime: ${err.message}`);
+    render();
   } finally {
     setBusy(false);
   }
@@ -463,6 +547,9 @@ function reset() {
   state.cacheState = null;
   state.history = [];
   state.error = null;
+  state.activeCalculationContext = [];
+  state.calculationPhase = 'idle';
+  state.lastCalculationInput = [];
   committedPromptId.value = null;
   ui('prompt').value = '';
   ui('prompt-hint').hidden = true;
@@ -478,6 +565,7 @@ function reset() {
   seq.classList.remove('stale');
   ui('prompt-preview').innerHTML = '';
   ui('preview-meta').textContent = '';
+  ui('next-step-panel').hidden = true;
   renderHistory();
   clearError();
   updateButton();
@@ -517,7 +605,11 @@ function init() {
     el.addEventListener('input', onParamChange);
   });
   ui('param-cachemode').addEventListener('change', (e) => {
-    state.mode = e.target.value;
+    const nextMode = e.target.value;
+    if (state.mode !== nextMode) {
+      state.mode = nextMode;
+      state.cacheState = null;
+    }
   });
 
   ui('model-download').hidden = false;

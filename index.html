@@ -174,15 +174,21 @@
         </details>
       </div>
 
+      <section id="next-step-panel" class="next-step-panel" data-testid="next-step-panel" hidden>
+        <div class="step-label">Prossimo calcolo</div>
+        <h2>Input usato dal modello</h2>
+        <p id="next-step-explanation" class="step-explanation" data-testid="next-step-explanation"></p>
+        <div id="next-step-context" class="token-sequence calculation-context" data-testid="next-step-context"></div>
+        <div class="step-actions">
+          <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary next-step-button" type="button" disabled>
+            Calcola token successivo
+          </button>
+        </div>
+      </section>
+
       <p id="eos-message" class="context-message eos-message" data-testid="eos-message" hidden>
         Token EOS generato. La sequenza è terminata.
       </p>
-
-      <div class="buttons bottom-cta">
-        <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary" disabled>
-          Calcola token successivo
-        </button>
-      </div>
     </section>
   </main>
 

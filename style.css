@@ -339,24 +339,6 @@ tr.chosen-row td .tag {
 
 h2 { margin-bottom: 0.4rem; font-size: 1.15rem; }
 
-.bottom-cta {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-}
-
-@media (max-width: 768px) {
-  .bottom-cta {
-    position: sticky;
-    bottom: 0;
-    background: var(--bg);
-    margin: 1rem -1rem 0;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--border);
-    z-index: 10;
-  }
-  .bottom-cta button { flex: 1; }
-}
 
 /* Preset prompt */
 .presets {
@@ -417,3 +399,38 @@ h2 { margin-bottom: 0.4rem; font-size: 1.15rem; }
   100% { transform: scale(1); opacity: 1; }
 }
 .chip.just-added { animation: pop-in 0.35s ease-out; }
+
+/* Pannello "Input del prossimo calcolo" */
+.next-step-panel {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.step-label {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.step-explanation { margin: 0.35rem 0 0.75rem; color: var(--muted); }
+.calculation-context { background: var(--bg); }
+.last-context-token {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+.next-step-button { width: 100%; min-height: 3rem; font-size: 1.05rem; }
+.step-actions { margin-top: 0.75rem; }
+tr.chosen-row { box-shadow: inset 4px 0 0 var(--accent); }
+
+@media (max-width: 600px) {
+  .next-step-panel {
+    position: sticky;
+    bottom: 0.75rem;
+    z-index: 10;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  }
+  .next-step-button { min-height: 3.4rem; }
+}
