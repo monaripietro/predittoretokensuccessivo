@@ -32,6 +32,15 @@ export const MODEL_CONFIG = {
     vocabSize: 49152,
     tokenizerName: 'SmolLM2 BPE',
   },
+  // Dispositivi mobile senza WebGPU: 360M in WASM supera spesso la memoria
+  // disponibile su smartphone, quindi si usa direttamente il modello 135M.
+  tiny: {
+    id: 'onnx-community/SmolLM2-135M-Instruct-ONNX',
+    dtypeWasm: 'q4',
+    contextLimit: 8192,
+    vocabSize: 49152,
+    tokenizerName: 'SmolLM2 BPE',
+  },
 };
 
 let transformersModule = null;
@@ -48,6 +57,14 @@ async function loadTransformers() {
   }
   transformersModule = await import('@huggingface/transformers');
   return transformersModule;
+}
+
+export function isMobileLike() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  const touch = (navigator.maxTouchPoints ?? 0) > 0;
+  const smallScreen = Math.min(window.screen?.width ?? 9999, window.screen?.height ?? 9999) < 820;
+  return coarse && touch && smallScreen;
 }
 
 export class RealRuntime {
@@ -94,13 +111,18 @@ export class RealRuntime {
 
     // WASM / Node: modello leggero. Qwen2.5-0.5B in WASM eccede la memoria
     // disponibile in molti browser e il crash del tab non è intercettabile,
-    // quindi il backend senza WebGPU usa direttamente il modello più piccolo.
-    this.modelId = MODEL_CONFIG.fallback.id;
+    // quindi il backend senza WebGPU usa direttamente un modello più piccolo.
+    // Su smartphone (nessun WebGPU, pointer coarse) anche il 360M è troppo grande:
+    // si seleziona il 135M prima del caricamento.
+    const profile = [MODEL_CONFIG, MODEL_CONFIG.fallback, MODEL_CONFIG.tiny]
+      .find((c) => c.id === this.modelId)
+      ?? (isMobileLike() ? MODEL_CONFIG.tiny : MODEL_CONFIG.fallback);
+    this.modelId = profile.id;
     this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId);
     this.eosId = this.tokenizer.eos_token_id;
     if (typeof this.eosId !== 'number') this.eosId = this.tokenizer.eos_token_id?.[0] ?? 2;
-    this.dtype = MODEL_CONFIG.fallback.dtypeWasm;
-    this.contextLimit = MODEL_CONFIG.fallback.contextLimit;
+    this.dtype = profile.dtypeWasm;
+    this.contextLimit = profile.contextLimit;
     const device = IS_NODE ? 'cpu' : 'wasm';
     this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
       device,
@@ -112,7 +134,8 @@ export class RealRuntime {
   }
 
   describe() {
-    const config = this.modelId === MODEL_CONFIG.id ? MODEL_CONFIG : MODEL_CONFIG.fallback;
+    const config = [MODEL_CONFIG, MODEL_CONFIG.fallback, MODEL_CONFIG.tiny]
+      .find((c) => c.id === this.modelId) ?? MODEL_CONFIG;
     return {
       backend: this.backend,
       modelInfo: this.modelInfo,
