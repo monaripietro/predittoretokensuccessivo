@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RealRuntime, MODEL_CONFIG, isMobileLike, makeProgressTracker } from '../../src/realRuntime.js';
+import { RealRuntime, MODEL_CONFIG, makeProgressTracker } from '../../src/realRuntime.js';
 
 /**
  * Test di integrazione con il modello reale (Xenova/distilgpt2, ~35MB).
@@ -51,11 +51,7 @@ describe('RealRuntime (distilgpt2) — opzionale', () => {
 });
 
 describe('selezione modello per dispositivo', () => {
-  it('isMobileLike è false in Node (nessun window)', () => {
-    expect(isMobileLike()).toBe(false);
-  });
-
-  it('MODEL_CONFIG dichiara il profilo tiny per mobile', () => {
+  it('MODEL_CONFIG dichiara il profilo tiny come alternativa leggera', () => {
     expect(MODEL_CONFIG.tiny.id).toBe('onnx-community/SmolLM2-135M-Instruct-ONNX');
     expect(MODEL_CONFIG.tiny.vocabSize).toBeGreaterThan(0);
     expect([MODEL_CONFIG.id, MODEL_CONFIG.fallback.id, MODEL_CONFIG.tiny.id]).toContain(MODEL_CONFIG.fallback.id);
