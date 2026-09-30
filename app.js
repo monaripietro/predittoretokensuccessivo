@@ -244,7 +244,7 @@ function renderRanking() {
   const body = ui('ranking-body');
   body.innerHTML = '';
   const ranking = state.ranking || [];
-  const maxProb = ranking.length > 0 ? Math.max(...ranking.map((c) => c.prob)) : 1;
+  const maxProb = ranking.length > 0 ? ranking.reduce((m, c) => Math.max(m, c.prob), 0) : 1;
   ranking.forEach((c, i) => {
     const tr = document.createElement('tr');
     if (c.tokenId === state.selectedToken?.tokenId) tr.classList.add('chosen-row');
