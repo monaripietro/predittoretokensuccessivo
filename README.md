@@ -104,21 +104,21 @@ Poi in `Settings → Pages`: inserire il custom domain e attivare `Enforce HTTPS
 |---|---|
 | Primario (WebGPU) | `onnx-community/Qwen2.5-0.5B-Instruct` — q4f16 (~400 MB) |
 | Leggero (WASM desktop) | `onnx-community/SmolLM2-360M-Instruct-ONNX` — q4 (~250 MB) |
-| Tiny (WASM mobile) | `onnx-community/SmolLM2-135M-Instruct-ONNX` — q4 (~90 MB) |
+| Tiny (manuale, non selezionato automaticamente) | `onnx-community/SmolLM2-135M-Instruct-ONNX` — q4 (~90 MB) |
 | Licenza | Apache-2.0 |
 | Origine | Hugging Face Hub, CORS abilitato per uso browser |
 | Vocabolario | Qwen2 151.936 token / SmolLM2 49.152 token (BPE) |
 | Contesto | Qwen2 32.768 token / SmolLM2 8.192 token |
 
-La scelta è automatica: WebGPU → Qwen2.5-0.5B; WASM desktop → SmolLM2-360M; WASM su smartphone/tablet (pointer coarse, touch, schermo piccolo) → SmolLM2-135M. Il modello è scaricato dal browser al primo avvio e messo in cache (Cache Storage). Nessun file di modello è nel repository. I valori mostrati nel pannello "Dettagli runtime" sono letti dal profilo del modello effettivamente caricato, non hardcoded.
+La scelta è automatica: WebGPU → Qwen2.5-0.5B; altrimenti SmolLM2-360M in WASM. Il modello è scaricato dal browser al primo avvio e messo in cache (Cache Storage). Nessun file di modello è nel repository. I valori mostrati nel pannello "Dettagli runtime" sono letti dal profilo del modello effettivamente caricato, non hardcoded.
 
 ## Limiti dichiarati
 
 - **KV cache**: il runtime reale usa la `past_key_values` dell'export ONNX "merged" dei modelli sopra; la modalità naive ricalcola l'intera sequenza. L'equivalenza dei risultati tra le due modalità è verificata dai test (`tests/unit/realRuntime.test.js`). La cache è quella reale del runtime, non una metrica simulata.
 - **Qualità linguistica**: i modelli da 0.5B/360M parametri restano piccoli; l'obiettivo è osservare token, ID e distribuzione, non produrre testo di qualità.
 - **Memoria WASM**: Qwen2.5-0.5B in WASM può superare la memoria disponibile e far crashare il tab senza eccezione JS; per questo il backend senza WebGPU seleziona un modello più piccolo prima del caricamento.
-- **Mobile**: su smartphone senza WebGPU (es. Chrome Android) anche SmolLM2-360M può superare la memoria disponibile; l'app seleziona direttamente SmolLM2-135M (~90 MB, ~270 MB RAM). Il primo download su rete mobile richiede tempo; in seguito il modello resta in cache del browser.
-- **Rilevamento mobile**: `isMobileLike()` combina `pointer: coarse`, touch points e schermo piccolo. È un'euristica: un tablet grande con desktop mode caricherà il 360M, un dispositivo desktop con touch screen no.
+- **Browser consigliato**: Google Chrome da computer. Su smartphone/tablet il runtime può superare la memoria disponibile e il caricamento del modello non è garantito: il sito mostra un avviso esplicito in testa alla pagina.
+- **Chrome Android**: non supportato come target. In passato il runtime selezionava automaticamente SmolLM2-135M su dispositivi mobile; questa ottimizzazione è stata rimossa su richiesta del proprietario: la selezione del modello dipende solo dal backend (WebGPU/WASM), non dal tipo di dispositivo.
 - **Prompt lunghi**: nessun limite artificiale oltre il contesto del modello caricato; prestazioni WebGPU/WASM variano per browser e dispositivo.
 - **Parametri**: temperatura, top-k, top-p, min-p, repeat penalty e seed sono applicati ai logits nel codice dell'app, quindi funzionanti anche col runtime reale.
 

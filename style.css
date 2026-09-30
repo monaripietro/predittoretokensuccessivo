@@ -60,6 +60,15 @@ h1 { margin-bottom: 0.25rem; }
   padding: 0.1rem 0.45rem;
 }
 
+.browser-alert {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
 .mock-warning {
   background: rgba(245, 197, 66, 0.12);
   border: 1px solid var(--warn);

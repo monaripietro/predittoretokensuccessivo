@@ -475,3 +475,13 @@ test.describe('Indicatore di caricamento modello', () => {
     expect(await bar.locator('div').count()).toBe(1);
   });
 });
+
+test.describe('Avviso browser', () => {
+  test("l'alert raccomanda Google Chrome da computer ed è visibile", async ({ page }) => {
+    await page.goto('/?mock');
+    const alert = page.getByTestId('browser-alert');
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText('Google Chrome');
+    await expect(alert).toContainText('computer');
+  });
+});

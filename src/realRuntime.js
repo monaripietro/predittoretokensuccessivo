@@ -59,7 +59,7 @@ async function loadTransformers() {
   return transformersModule;
 }
 
-export function isMobileLike() {
+function isMobileLike() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
   const touch = (navigator.maxTouchPoints ?? 0) > 0;
@@ -151,7 +151,7 @@ export class RealRuntime {
     // si seleziona il 135M prima del caricamento.
     const profile = [MODEL_CONFIG, MODEL_CONFIG.fallback, MODEL_CONFIG.tiny]
       .find((c) => c.id === this.modelId)
-      ?? (isMobileLike() ? MODEL_CONFIG.tiny : MODEL_CONFIG.fallback);
+      ?? MODEL_CONFIG.fallback;
     this.modelId = profile.id;
     this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId);
     this.eosId = this.tokenizer.eos_token_id;
