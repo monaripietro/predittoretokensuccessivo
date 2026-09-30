@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { RealRuntime, MODEL_CONFIG, isMobileLike } from '../../src/realRuntime.js';
+import { describe, it, expect, vi } from 'vitest';
+import { RealRuntime, MODEL_CONFIG, isMobileLike, makeProgressTracker } from '../../src/realRuntime.js';
 
 /**
  * Test di integrazione con il modello reale (Xenova/distilgpt2, ~35MB).
@@ -83,5 +83,46 @@ describe('selezione modello per dispositivo', () => {
     expect(r1.logits.length).toBe(MODEL_CONFIG.tiny.vocabSize);
     const r2 = await rt.nextLogits({ ids: [r1.logits.indexOf(Math.max(...r1.logits))], cache: r1.cache });
     expect(r2.newTokens).toBe(1);
+  });
+});
+
+describe('progress tracker del download', () => {
+  it('aggrega più file in una percentuale', () => {
+    vi.useFakeTimers();
+    try {
+      const events = [];
+      const tracker = makeProgressTracker((p) => events.push(p));
+      tracker({ status: 'progress', file: 'a.onnx', loaded: 50, total: 100 });
+      vi.advanceTimersByTime(300);
+      tracker({ status: 'progress', file: 'b.onnx', loaded: 25, total: 100 });
+      const last = events.at(-1);
+      expect(last.percent).toBe(38);
+      expect(last.pending).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('file completato conta come intero', () => {
+    const events = [];
+    const tracker = makeProgressTracker((p) => events.push(p));
+    tracker({ status: 'progress', file: 'a.onnx', loaded: 60, total: 100 });
+    tracker({ status: 'done', file: 'a.onnx' });
+    const last = events.at(-1);
+    expect(last.percent).toBe(100);
+  });
+
+  it('throttling: non emette più di un evento ogni 250ms durante il download', () => {
+    const events = [];
+    const tracker = makeProgressTracker((p) => events.push(p));
+    tracker({ status: 'progress', file: 'a.onnx', loaded: 1, total: 100 });
+    tracker({ status: 'progress', file: 'a.onnx', loaded: 2, total: 100 });
+    tracker({ status: 'progress', file: 'a.onnx', loaded: 3, total: 100 });
+    expect(events.length).toBe(1);
+  });
+
+  it('callback null è sicuro', () => {
+    const tracker = makeProgressTracker(null);
+    expect(() => tracker({ status: 'progress', file: 'a', loaded: 1, total: 100 })).not.toThrow();
   });
 });

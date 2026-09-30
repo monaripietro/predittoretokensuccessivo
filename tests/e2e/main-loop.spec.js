@@ -461,3 +461,17 @@ test.describe('Criteri di successo UX', () => {
     expect(headings).toContain('Input del prossimo calcolo');
   });
 });
+
+test.describe('Indicatore di caricamento modello', () => {
+  test('la nota di download contiene testo di stato e barra di avanzamento', async ({ page }) => {
+    await page.goto('/?mock');
+    const note = page.getByTestId('model-download');
+    await expect(note).toBeAttached();
+    await expect(note.getByTestId('download-progress')).toBeAttached();
+    await expect(note.getByTestId('download-progress-bar')).toBeAttached();
+    const text = await note.getByTestId('download-progress').textContent();
+    expect(text).toMatch(/Download modello|Caricamento modello/);
+    const bar = note.getByTestId('download-progress-bar');
+    expect(await bar.locator('div').count()).toBe(1);
+  });
+});

@@ -23,9 +23,11 @@
       <span id="mock-badge" class="mock-badge" data-testid="mock-badge" hidden>MOCK</span>
     </section>
 
-    <p id="model-download" class="download-note" data-testid="model-download" hidden>
-      Caricamento modello… il primo avvio può richiedere tempo.
-    </p>
+    <div id="model-download" class="download-note" data-testid="model-download" hidden>
+      <span data-testid="download-progress">Download modello in corso…</span>
+      <span class="download-note-sub">il primo avvio può richiedere tempo</span>
+      <div class="download-progress-bar" data-testid="download-progress-bar" aria-hidden="true"><div></div></div>
+    </div>
     <p id="mock-warning" class="mock-warning" data-testid="mock-warning" hidden>
       ⚠️ Demo mock attiva: risultati simulati, modello reale non disponibile.
     </p>

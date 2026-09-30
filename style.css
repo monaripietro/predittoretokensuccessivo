@@ -80,14 +80,36 @@ h1 { margin-bottom: 0.25rem; }
   margin: 0 0 1rem;
 }
 
-.download-note.progress::after {
-  content: '';
-  display: block;
-  height: 4px;
+.download-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.download-note-sub {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+.download-progress-bar {
+  height: 6px;
   margin-top: 0.5rem;
-  border-radius: 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--border));
+  overflow: hidden;
+}
+
+.download-progress-bar > div {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.download-progress-bar.indeterminate > div {
+  width: 40%;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  background-size: 40% 100%;
   animation: slide 1.2s linear infinite;
 }
 
