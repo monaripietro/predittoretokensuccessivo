@@ -67,6 +67,39 @@ export function isMobileLike() {
   return coarse && touch && smallScreen;
 }
 
+export function makeProgressTracker(onProgress) {
+  const files = new Map();
+  let lastEmit = 0;
+  return (data) => {
+    if (!data || onProgress == null) return;
+    const { status, file, progress = 0, loaded = 0, total = 0 } = data;
+    if (file) {
+      if (status === 'done' || progress >= 100) {
+        files.set(file, { loaded: 1, total: 1, done: true });
+      } else if (total > 0) {
+        files.set(file, { loaded, total, done: false });
+      } else if (progress > 0) {
+        const prev = files.get(file) ?? { loaded: 0, total: 100, done: false };
+        files.set(file, { loaded: progress, total: 100, done: false });
+      }
+    }
+    let sumLoaded = 0;
+    let sumTotal = 0;
+    let pending = 0;
+    for (const f of files.values()) {
+      sumLoaded += f.loaded;
+      sumTotal += f.total;
+      if (!f.done) pending += 1;
+    }
+    if (sumTotal <= 0) return;
+    const percent = Math.min(100, Math.round((sumLoaded / sumTotal) * 100));
+    const now = Date.now();
+    if (percent < 100 && now - lastEmit < 250 && pending > 0) return;
+    lastEmit = now;
+    onProgress({ percent, pending, status: status ?? 'download' });
+  };
+}
+
 export class RealRuntime {
   constructor(modelId = MODEL_CONFIG.id) {
     this.modelId = modelId;
@@ -76,10 +109,11 @@ export class RealRuntime {
     this.modelInfo = modelId;
   }
 
-  async init() {
+  async init(onProgress) {
     const { AutoTokenizer, AutoModelForCausalLM, Tensor } = await loadTransformers();
     this.Tensor = Tensor;
-    this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId);
+    const tracker = makeProgressTracker(onProgress);
+    this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId, { progress_callback: tracker });
     this.eosId = this.tokenizer.eos_token_id;
     if (typeof this.eosId !== 'number') this.eosId = this.tokenizer.eos_token_id?.[0] ?? 50256;
 
@@ -99,6 +133,7 @@ export class RealRuntime {
         this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
           device: 'webgpu',
           dtype: this.dtype,
+          progress_callback: tracker,
         });
         this.backend = 'WebGPU';
         this.contextLimit = MODEL_CONFIG.contextLimit;
@@ -127,6 +162,7 @@ export class RealRuntime {
     this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
       device,
       dtype: this.dtype,
+      progress_callback: tracker,
     });
     this.backend = IS_NODE ? 'WASM (cpu)' : 'WASM';
     this.modelInfo = `${this.modelId} (${this.dtype})`;

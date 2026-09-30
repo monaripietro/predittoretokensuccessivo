@@ -27,7 +27,9 @@ export function validateParams(p = {}) {
 export function softmax(logits, temperature = 1.0) {
   if (!Number.isFinite(temperature) || temperature <= 0) temperature = 1.0;
   const scaled = logits.map((x) => (Number.isFinite(x) ? x : -Infinity) / temperature);
-  const max = Math.max(...scaled);
+  // reduce invece di Math.max(...scaled): con vocabolari grandi
+  // (Qwen2 151.936) lo spread supera il limite di argomenti della call stack.
+  const max = scaled.reduce((m, x) => (x > m ? x : m), -Infinity);
   const exps = scaled.map((x) => (x === -Infinity ? 0 : Math.exp(x - max)));
   const sum = exps.reduce((a, b) => a + b, 0);
   if (sum === 0) return logits.map(() => 1 / logits.length);
@@ -65,7 +67,7 @@ export function applyTopP(ranking, topP = 1.0) {
 
 export function applyMinP(ranking, probs, minP = 0) {
   if (!minP || minP <= 0) return ranking.slice();
-  const maxProb = Math.max(...ranking.map((c) => probs[c.tokenId]));
+  const maxProb = ranking.reduce((m, c) => Math.max(m, probs[c.tokenId]), 0);
   const threshold = minP * maxProb;
   return ranking.filter((c) => probs[c.tokenId] >= threshold);
 }

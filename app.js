@@ -33,7 +33,7 @@ const useMockParam = new URLSearchParams(location.search).has('mock');
 let runtime = null;
 let runtimeKind = 'real';
 
-async function initRuntime() {
+async function initRuntime(onProgress) {
   if (useMockParam) {
     runtime = new MockRuntime();
     runtimeKind = 'mock';
@@ -43,7 +43,7 @@ async function initRuntime() {
   runtime = new RealRuntime();
   runtimeKind = 'real';
   try {
-    const info = await runtime.init();
+    const info = await runtime.init(onProgress);
     return { ...info, kind: 'real' };
   } catch (err) {
     runtime = null;
@@ -244,7 +244,7 @@ function renderRanking() {
   const body = ui('ranking-body');
   body.innerHTML = '';
   const ranking = state.ranking || [];
-  const maxProb = ranking.length > 0 ? Math.max(...ranking.map((c) => c.prob)) : 1;
+  const maxProb = ranking.length > 0 ? ranking.reduce((m, c) => Math.max(m, c.prob), 0) : 1;
   ranking.forEach((c, i) => {
     const tr = document.createElement('tr');
     if (c.tokenId === state.selectedToken?.tokenId) tr.classList.add('chosen-row');
@@ -594,7 +594,21 @@ function init() {
   });
 
   ui('model-download').hidden = false;
-  initRuntime().then((info) => {
+  const dlNote = ui('model-download');
+  const setDownloadProgress = (percent) => {
+    const span = dlNote.querySelector('[data-testid="download-progress"]');
+    const bar = dlNote.querySelector('[data-testid="download-progress-bar"]');
+    const fill = bar?.querySelector('div');
+    if (typeof percent === 'number' && percent >= 0) {
+      if (span) span.textContent = `Download modello: ${percent}%`;
+      if (fill) fill.style.width = `${percent}%`;
+      if (bar) bar.classList.remove('indeterminate');
+    } else {
+      if (span) span.textContent = 'Download modello in corso…';
+      if (bar) bar.classList.add('indeterminate');
+    }
+  };
+  initRuntime((progress) => setDownloadProgress(progress?.percent)).then((info) => {
     const { backend, modelInfo, kind, cause, dtype, modelId, tokenizerName, vocabSize, contextLimit } = info;
     if (kind === 'error') {
       state.modelStatus = 'error';

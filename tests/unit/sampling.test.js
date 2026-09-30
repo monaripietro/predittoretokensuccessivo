@@ -143,3 +143,23 @@ describe('validazione parametri', () => {
     expect(validateParams({ seed: 1.5 }).errors.length).toBeGreaterThan(0);
   });
 });
+
+describe('vocabolari grandi (regressione call stack)', () => {
+  it('softmax gestisce 151.936 logits senza Maximum call stack size exceeded', () => {
+    const n = 151_936;
+    const logits = new Array(n);
+    for (let i = 0; i < n; i++) logits[i] = Math.sin(i) * 10;
+    const probs = softmax(logits, 1.0);
+    expect(probs.length).toBe(n);
+    const sum = probs.reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1.0, 6);
+  });
+
+  it('applyMinP gestisce un ranking della dimensione del vocabolario', () => {
+    const n = 151_936;
+    const ranking = Array.from({ length: n }, (_, id) => ({ tokenId: id, prob: 1 / n }));
+    const probs = new Array(n).fill(1 / n);
+    const out = applyMinP(ranking, probs, 0.5);
+    expect(out.length).toBe(n);
+  });
+});
