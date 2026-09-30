@@ -8,7 +8,7 @@ Prompt → tokenizzazione → token successivo → classifica probabilità → a
 
 **URL pubblico canonico:** <https://predittoretokensuccessivo.monaripietro.it>
 
-Il modello (distilgpt2 quantizzato, ONNX) gira interamente nel browser via [Transformers.js](https://huggingface.co/docs/transformers.js): nessun backend, nessuna API cloud. WebGPU quando disponibile, fallback WASM. In ambienti senza GPU/rete è disponibile un runtime mock deterministico (`?mock`).
+Il modello gira interamente nel browser via [Transformers.js](https://huggingface.co/docs/transformers.js): nessun backend, nessuna API cloud. Con WebGPU disponibile usa **Qwen2.5-0.5B-Instruct** (q4f16); senza WebGPU usa direttamente il più leggero **SmolLM2-360M-Instruct** (q4), perché Qwen in WASM eccede la memoria di molti browser e causa il crash del tab (non intercettabile via JS). In ambienti senza GPU/rete è disponibile un runtime mock deterministico (`?mock`).
 
 ## Installazione
 
@@ -102,19 +102,21 @@ Poi in `Settings → Pages`: inserire il custom domain e attivare `Enforce HTTPS
 
 | | |
 |---|---|
-| Modello | `Xenova/distilgpt2` (distilgpt2) |
-| Formato | ONNX quantizzato q8 (~35 MB) |
-| Licenza | MIT |
+| Primario (WebGPU) | `onnx-community/Qwen2.5-0.5B-Instruct` — q4f16 (~400 MB) |
+| Leggero (WASM/Node) | `onnx-community/SmolLM2-360M-Instruct-ONNX` — q4 (~250 MB) |
+| Licenza | Apache-2.0 |
 | Origine | Hugging Face Hub, CORS abilitato per uso browser |
-| Vocabolario | 50257 token (BPE GPT-2) |
+| Vocabolario | Qwen2 151.936 token / SmolLM2 49.152 token (BPE) |
+| Contesto | Qwen2 32.768 token / SmolLM2 8.192 token |
 
-Il modello viene scaricato dal browser al primo avvio e messo in cache (Cache Storage). Nessun file di modello è nel repository.
+Entrambi i modelli sono scaricati dal browser al primo avvio e messi in cache (Cache Storage). Nessun file di modello è nel repository. I valori mostrati nel pannello "Dettagli runtime" sono letti dal modello effettivamente caricato, non hardcoded.
 
 ## Limiti dichiarati
 
-- **KV cache**: il runtime reale usa la `past_key_values` dell'export ONNX "merged" di distilgpt2; la modalità naive ricalcola l'intera sequenza. L'equivalenza dei risultati tra le due modalità è verificata dai test (`tests/unit/realRuntime.test.js`). La cache è quella reale del runtime, non una metrica simulata.
-- **Qualità linguistica**: distilgpt2 è volutamente minimale; l'obiettivo è osservare token, ID e distribuzione, non produrre testo di qualità.
-- **Prompt lunghi**: nessun limite artificiale oltre il contesto del modello (1024 token); prestazioni WebGPU/WASM variano per browser e dispositivo.
+- **KV cache**: il runtime reale usa la `past_key_values` dell'export ONNX "merged" dei modelli sopra; la modalità naive ricalcola l'intera sequenza. L'equivalenza dei risultati tra le due modalità è verificata dai test (`tests/unit/realRuntime.test.js`). La cache è quella reale del runtime, non una metrica simulata.
+- **Qualità linguistica**: i modelli da 0.5B/360M parametri restano piccoli; l'obiettivo è osservare token, ID e distribuzione, non produrre testo di qualità.
+- **Memoria WASM**: Qwen2.5-0.5B in WASM può superare la memoria disponibile e far crashare il tab senza eccezione JS; per questo il backend senza WebGPU seleziona SmolLM2-360M prima del caricamento.
+- **Prompt lunghi**: nessun limite artificiale oltre il contesto del modello caricato; prestazioni WebGPU/WASM variano per browser e dispositivo.
 - **Parametri**: temperatura, top-k, top-p, min-p, repeat penalty e seed sono applicati ai logits nel codice dell'app, quindi funzionanti anche col runtime reale.
 
 ## Checklist di rilascio (dominio pubblico)
@@ -159,4 +161,5 @@ tests/e2e/            Playwright
 
 - [Transformers.js](https://huggingface.co/docs/transformers.js) — modelli ONNX nel browser
 - [GitHub Pages — custom domains](https://docs.github.com/pages/configuring-a-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
-- [distilgpt2](https://huggingface.co/distilbert/distilgpt2) (MIT)
+- [Qwen2.5-0.5B-Instruct ONNX](https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct) (Apache-2.0)
+- [SmolLM2-360M-Instruct ONNX](https://huggingface.co/onnx-community/SmolLM2-360M-Instruct-ONNX) (Apache-2.0)
