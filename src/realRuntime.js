@@ -1,6 +1,6 @@
 /**
  * Runtime reale basato su Transformers.js (ONNX in-browser).
- * Modello: Xenova/distilgpt2 (distilgpt2, licenza MIT, ~35MB in q8).
+ * Modello: onnx-community/Qwen2.5-0.5B-Instruct (Apache-2.0, ~400MB in q4).
  * Backend: WebGPU quando disponibile, fallback WASM.
  *
  * Nota tecnica: Transformers.js viene importato a runtime dall'ESM CDN
@@ -17,6 +17,22 @@
 
 const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 const IS_NODE = typeof window === 'undefined' && typeof process !== 'undefined';
+
+export const MODEL_CONFIG = {
+  id: 'onnx-community/Qwen2.5-0.5B-Instruct',
+  dtypeWebGPU: 'q4f16',
+  dtypeWasm: 'q4',
+  contextLimit: 32768,
+  vocabSize: 151936,
+  tokenizerName: 'Qwen2 BPE',
+  fallback: {
+    id: 'onnx-community/SmolLM2-360M-Instruct-ONNX',
+    dtypeWasm: 'q4',
+    contextLimit: 8192,
+    vocabSize: 49152,
+    tokenizerName: 'SmolLM2 BPE',
+  },
+};
 
 let transformersModule = null;
 
@@ -35,9 +51,9 @@ async function loadTransformers() {
 }
 
 export class RealRuntime {
-  constructor(modelId = 'Xenova/distilgpt2', dtype = 'q8') {
+  constructor(modelId = MODEL_CONFIG.id) {
     this.modelId = modelId;
-    this.dtype = dtype;
+    this.dtype = null;
     this.eosId = null;
     this.backend = 'wasm';
     this.modelInfo = modelId;
@@ -62,39 +78,50 @@ export class RealRuntime {
 
     if (webgpuOk) {
       try {
+        this.dtype = MODEL_CONFIG.dtypeWebGPU;
         this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
           device: 'webgpu',
           dtype: this.dtype,
         });
         this.backend = 'WebGPU';
+        this.contextLimit = MODEL_CONFIG.contextLimit;
         this.modelInfo = `${this.modelId} (${this.dtype})`;
-        return { backend: this.backend, modelInfo: this.modelInfo };
+        return this.describe();
       } catch {
         webgpuOk = false;
       }
     }
 
-    try {
-      this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
-        device: 'wasm',
-        dtype: this.dtype,
-      });
-      this.backend = 'WASM';
-    } catch (err) {
-      // In Node il device si chiama 'cpu' invece di 'wasm'
-      if (IS_NODE) {
-        this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
-          device: 'cpu',
-          dtype: this.dtype,
-        });
-        this.backend = 'WASM (cpu)';
-      } else {
-        throw err;
-      }
-    }
-
+    // WASM / Node: modello leggero. Qwen2.5-0.5B in WASM eccede la memoria
+    // disponibile in molti browser e il crash del tab non è intercettabile,
+    // quindi il backend senza WebGPU usa direttamente il modello più piccolo.
+    this.modelId = MODEL_CONFIG.fallback.id;
+    this.tokenizer = await AutoTokenizer.from_pretrained(this.modelId);
+    this.eosId = this.tokenizer.eos_token_id;
+    if (typeof this.eosId !== 'number') this.eosId = this.tokenizer.eos_token_id?.[0] ?? 2;
+    this.dtype = MODEL_CONFIG.fallback.dtypeWasm;
+    this.contextLimit = MODEL_CONFIG.fallback.contextLimit;
+    const device = IS_NODE ? 'cpu' : 'wasm';
+    this.model = await AutoModelForCausalLM.from_pretrained(this.modelId, {
+      device,
+      dtype: this.dtype,
+    });
+    this.backend = IS_NODE ? 'WASM (cpu)' : 'WASM';
     this.modelInfo = `${this.modelId} (${this.dtype})`;
-    return { backend: this.backend, modelInfo: this.modelInfo };
+    return this.describe();
+  }
+
+  describe() {
+    const config = this.modelId === MODEL_CONFIG.id ? MODEL_CONFIG : MODEL_CONFIG.fallback;
+    return {
+      backend: this.backend,
+      modelInfo: this.modelInfo,
+      dtype: this.dtype,
+      modelId: this.modelId,
+      tokenizerName: config.tokenizerName,
+      vocabSize: config.vocabSize,
+      contextLimit: config.contextLimit,
+    };
   }
 
   encode(text) {

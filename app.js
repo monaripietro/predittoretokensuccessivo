@@ -3,11 +3,13 @@ import { RealRuntime } from './src/realRuntime.js';
 import { validateParams } from './src/sampling.js';
 
 const state = {
+  phase: 'idle',
   promptText: '',
   promptTokens: [],
   generatedTokens: [],
   contextTokens: [],
-  ranking: null,
+  lastInputTokens: [],
+  ranking: [],
   selectedToken: null,
   selectedProbability: null,
   selectedRank: null,
@@ -22,7 +24,6 @@ const state = {
   isStale: false,
   error: null,
   activeCalculationContext: [],
-  calculationPhase: 'idle',
   lastCalculationInput: [],
 };
 
@@ -101,17 +102,30 @@ function updateButton() {
   const promptEmpty = !ui('prompt').value.trim();
   const modelReady = state.modelStatus === 'ready';
   const disabled = state.isBusy || promptEmpty || !modelReady || state.eosReached;
-  const label = state.eosReached
-    ? 'Generazione terminata (EOS)'
-    : state.isBusy ? 'Calcolo…' : 'Calcola token successivo';
-  btn.disabled = disabled;
-  btn.textContent = label;
-  btn.classList.toggle('highlight', state.isStale && !disabled);
+  const label = primaryLabel();
+  const started = state.stepIndex > 0;
+  if (btn) {
+    btn.disabled = disabled;
+    btn.textContent = label;
+    btn.classList.toggle('highlight', state.isStale && !disabled);
+    btn.hidden = started;
+  }
   if (btnBottom) {
-    btnBottom.disabled = disabled || state.contextTokens.length === 0;
-    btnBottom.textContent = nextButtonLabel();
+    const started = state.stepIndex > 0;
+    btnBottom.disabled = disabled;
+    btnBottom.textContent = label;
+    btnBottom.hidden = !started;
+    btnBottom.parentElement.hidden = !started;
     btnBottom.classList.toggle('highlight', state.isStale && !disabled);
   }
+}
+
+function primaryLabel() {
+  if (state.eosReached) return 'Generazione terminata';
+  if (state.isBusy) return 'Calcolo del prossimo token…';
+  if (state.generatedTokens.length === 0) return 'Calcola il primo token';
+  const lastId = state.generatedTokens.at(-1);
+  return `Calcola il token dopo ${formatTokenForUi(displayTokenText(lastId))}`;
 }
 
 function formatTokenForUi(text) {
@@ -123,11 +137,7 @@ function formatTokenForUi(text) {
 }
 
 function nextButtonLabel() {
-  if (state.eosReached) return 'Generazione terminata';
-  if (state.isBusy) return 'Calcolo…';
-  if (state.generatedTokens.length === 0) return 'Calcola token successivo';
-  const lastId = state.generatedTokens.at(-1);
-  return `Calcola il token dopo ${formatTokenForUi(displayTokenText(lastId))}`;
+  return primaryLabel();
 }
 
 function invalidateGeneration() {
@@ -197,11 +207,12 @@ function liveTokenizePrompt() {
       state.contextTokens = ids;
       state.generatedTokens = [];
       state.isStale = true;
-      renderSequence();
     } else if (state.stepIndex === 0) {
       state.contextTokens = ids;
     }
+    ui('prompt-tokens-section').hidden = false;
     renderPromptPreview(ids);
+    renderNextStepContext();
     updateButton();
   }
 }
@@ -227,37 +238,6 @@ function renderPromptPreview(ids) {
   preview.appendChild(count);
   const tokenizerName = runtimeKind === 'real' ? 'GPT-2 BPE' : 'didattico (parole)';
   ui('preview-meta').textContent = `${ids.length} token · tokenizer ${tokenizerName}`;
-}
-
-function renderSequence() {
-  const box = ui('token-sequence');
-  box.innerHTML = '';
-  box.classList.remove('empty');
-  box.classList.toggle('stale', state.isStale);
-  const context = state.contextTokens;
-  if (!context || context.length === 0) {
-    box.classList.add('empty');
-    return;
-  }
-  const promptLen = state.promptTokens.length;
-  const genLen = state.generatedTokens.length;
-  const animate = state.animateNext && genLen > 0;
-  context.forEach((id, i) => {
-    let kind;
-    let justAdded = false;
-    if (i < promptLen) kind = 'prompt';
-    else if (i === context.length - 1 && genLen > 0) {
-      kind = 'generated last-generated';
-      justAdded = animate;
-    } else kind = 'generated';
-    const chip = makeChip('', id, i, kind);
-    if (justAdded) {
-      chip.classList.add('just-added');
-      chip.addEventListener('animationend', () => chip.classList.remove('just-added'), { once: true });
-    }
-    box.appendChild(chip);
-  });
-  state.animateNext = false;
 }
 
 function renderRanking() {
@@ -299,22 +279,6 @@ function escapeHtml(s) {
   }[c]));
 }
 
-function renderContextMessage() {
-  const el = ui('context-message');
-  const n = state.contextTokens.length;
-  const promptLen = state.promptTokens.length;
-  el.hidden = false;
-  if (state.stepIndex === 0 && n > 0) {
-    el.textContent = `Il prossimo token viene calcolato usando ${n} token di contesto (tutti dal prompt).`;
-  } else if (state.stepIndex === 1) {
-    el.textContent = `Il modello ha elaborato i ${promptLen} token del prompt e ha calcolato la distribuzione del token in posizione ${promptLen + 1}. Il prossimo calcolo userà ${n} token di contesto.`;
-  } else if (state.selectedToken) {
-    el.textContent = `Il modello usa ora i ${n} token di contesto per calcolare il token in posizione ${n + 1}.`;
-  } else {
-    el.hidden = true;
-  }
-}
-
 function renderCacheStatus(newTokens) {
   const box = ui('cache-status');
   const n = state.contextTokens.length;
@@ -341,15 +305,22 @@ function renderNextStepContext() {
     return;
   }
   contextBox.innerHTML = '';
+  contextBox.classList.toggle('stale', state.isStale);
   const promptLength = state.promptTokens.length;
+  const animate = state.animateNext && state.generatedTokens.length > 0;
   context.forEach((tokenId, index) => {
     const kind = index < promptLength ? 'prompt' : 'generated';
     const chip = makeChip('', tokenId, index, kind);
     if (index === context.length - 1 && index >= promptLength) {
       chip.classList.add('last-context-token');
+      if (animate) {
+        chip.classList.add('just-added');
+        chip.addEventListener('animationend', () => chip.classList.remove('just-added'), { once: true });
+      }
     }
     contextBox.appendChild(chip);
   });
+  state.animateNext = false;
   const nextPosition = context.length + 1;
   explanation.textContent =
     `Il modello userà questi ${context.length} token di contesto per calcolare `
@@ -361,13 +332,29 @@ function renderNextStepContext() {
   panel.hidden = false;
 }
 
+function renderStepStatus() {
+  const el = ui('step-status');
+  if (!el) return;
+  if (state.stepIndex === 0 && !state.isBusy) {
+    el.hidden = true;
+    return;
+  }
+  const step = state.stepIndex;
+  const inputLen = state.lastInputTokens.length || state.contextTokens.length;
+  el.textContent = state.isBusy
+    ? `Step ${step} · Il modello sta elaborando ${inputLen} token…`
+    : `Step ${state.stepIndex} · Input: ${inputLen} token · Output: 1 token`;
+  el.hidden = false;
+}
+
 function render() {
+  const hasPromptTokens = state.promptTokens.length > 0;
+  ui('prompt-tokens-section').hidden = !hasPromptTokens;
   renderPromptPreview(state.promptTokens);
-  renderSequence();
   renderNextStepContext();
   renderRanking();
-  renderContextMessage();
   renderHistory();
+  renderStepStatus();
   const hasResult = state.selectedToken !== null;
   ui('step-result').hidden = !hasResult;
   ui('eos-message').hidden = !state.eosReached;
@@ -458,10 +445,9 @@ async function nextStep() {
     prepareContextForCalculation();
 
     state.lastCalculationInput = state.contextTokens.slice();
+    state.lastInputTokens = state.contextTokens.slice();
     state.activeCalculationContext = state.contextTokens.slice();
-    state.calculationPhase = state.stepIndex === 0
-      ? 'calculating-first-token'
-      : 'calculating-next-token';
+    state.phase = 'calculating';
 
     const cache = state.mode === 'cache' ? state.cacheState : null;
     const step = await computeStep(runtime, {
@@ -471,18 +457,13 @@ async function nextStep() {
     });
 
     applyStepResult(step, values);
-    state.calculationPhase = state.eosReached
-      ? 'eos'
-      : state.stepIndex === 1
-        ? 'first-token-ready'
-        : 'next-token-ready';
-    render();
+    state.phase = state.eosReached ? 'eos' : 'result';
   } catch (err) {
-    state.calculationPhase = 'error';
-    showError(`Errore runtime: ${err.message}`);
-    render();
+    state.phase = 'error';
+    showError(`Calcolo non riuscito: ${err.message}. Il contesto è stato mantenuto; riprova.`);
   } finally {
     setBusy(false);
+    render();
   }
 }
 
@@ -552,21 +533,17 @@ function reset() {
   state.history = [];
   state.error = null;
   state.activeCalculationContext = [];
-  state.calculationPhase = 'idle';
+  state.phase = 'idle';
   state.lastCalculationInput = [];
   committedPromptId.value = null;
   ui('prompt').value = '';
   ui('prompt-hint').hidden = true;
   ui('params-hint').hidden = true;
   ui('step-result').hidden = true;
-  ui('context-message').hidden = true;
   ui('cache-status').hidden = true;
   ui('eos-message').hidden = true;
-  ui('sequence-hidden')?.removeAttribute('hidden');
-  const seq = ui('token-sequence');
-  seq.innerHTML = '';
-  seq.classList.add('empty');
-  seq.classList.remove('stale');
+  ui('prompt-tokens-section').hidden = true;
+  ui('step-status').hidden = true;
   ui('prompt-preview').innerHTML = '';
   ui('preview-meta').textContent = '';
   ui('next-step-panel').hidden = true;
@@ -617,7 +594,8 @@ function init() {
   });
 
   ui('model-download').hidden = false;
-  initRuntime().then(({ backend, modelInfo, kind, cause }) => {
+  initRuntime().then((info) => {
+    const { backend, modelInfo, kind, cause, dtype, modelId, tokenizerName, vocabSize, contextLimit } = info;
     if (kind === 'error') {
       state.modelStatus = 'error';
       ui('model-indicator').textContent = 'Modello: non disponibile';
@@ -633,6 +611,13 @@ function init() {
     ui('model-indicator').textContent = `Modello: ${modelInfo}`;
     ui('backend-indicator').textContent = `Backend: ${backend}`;
     ui('tech-backend').textContent = backend;
+    if (dtype) ui('tech-dtype').textContent = `ONNX quantizzato (${dtype})`;
+    if (modelId) {
+      ui('tech-model').textContent = modelId.split('/').pop();
+      ui('tech-tokenizer').textContent = tokenizerName || 'BPE';
+      if (vocabSize) ui('tech-vocab').textContent = `${vocabSize.toLocaleString('it-IT')} token`;
+      if (contextLimit) ui('tech-context').textContent = `${contextLimit.toLocaleString('it-IT')} token`;
+    }
     ui('model-download').hidden = true;
     if (kind === 'mock') {
       showMockUi(true);

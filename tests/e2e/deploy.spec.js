@@ -31,10 +31,12 @@ test.describe('Invariante di deploy (server locale)', () => {
     await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
     await page.getByTestId('prompt').fill('test deploy');
     for (let i = 1; i <= 3; i++) {
-      await page.getByTestId('btn-next').click();
-      await expect(page.getByTestId('token-sequence').locator('.chip')).toHaveCount(2 + i);
+      const top = page.getByTestId('btn-next');
+      if (await top.isVisible()) await top.click();
+      else await page.getByTestId('btn-next-bottom').click();
+      await expect(page.getByTestId('next-step-context').locator('.chip')).toHaveCount(2 + i);
     }
-    const msg = await page.getByTestId('context-message').textContent();
+    const msg = await page.getByTestId('next-step-explanation').textContent();
     expect(msg).toContain('5 token di contesto');
   });
 });

@@ -24,12 +24,14 @@
     </section>
 
     <p id="model-download" class="download-note" data-testid="model-download" hidden>
-      Primo avvio: download del modello (circa 35 MB). Il download può richiedere alcuni secondi…
+      Caricamento modello… il primo avvio può richiedere tempo.
     </p>
     <p id="mock-warning" class="mock-warning" data-testid="mock-warning" hidden>
-      ⚠️ Runtime mock attivo: i risultati sono simulati e servono solo per testare l'interfaccia.
+      ⚠️ Demo mock attiva: risultati simulati, modello reale non disponibile.
     </p>
+    <p id="error" class="error" data-testid="error" hidden></p>
 
+    <!-- 1. PROMPT -->
     <section class="controls">
       <label for="prompt">Prompt</label>
       <textarea id="prompt" data-testid="prompt" rows="3"
@@ -44,7 +46,7 @@
 
       <div class="buttons">
         <button id="btn-next" data-testid="btn-next" class="primary" disabled>
-          Calcola token successivo
+          Calcola il primo token
         </button>
         <button id="btn-reset" data-testid="btn-reset" class="secondary" type="button">
           Reset
@@ -55,16 +57,15 @@
       </div>
 
       <p id="prompt-hint" class="hint" data-testid="prompt-hint" hidden>
-        Il prompt è cambiato. La generazione precedente è stata annullata.
-        Premi "Calcola token successivo" per iniziare una nuova sequenza.
+        Il contesto precedente è stato annullato.
+        Calcola il primo token per ripartire.
       </p>
       <p id="params-hint" class="hint" data-testid="params-hint" hidden>
         Parametro modificato: il nuovo valore sarà applicato al prossimo calcolo.
       </p>
-      <p id="error" class="error" data-testid="error" hidden></p>
 
-      <details id="params-panel" class="params">
-        <summary>Opzioni</summary>
+      <details id="params-panel" class="params" data-testid="params-panel">
+        <summary>Opzioni di generazione</summary>
         <div class="params-grid">
           <label>Modalità
             <select id="param-mode" data-testid="param-mode">
@@ -106,29 +107,37 @@
       </details>
 
       <details id="tech-panel" class="params" data-testid="tech-panel">
-        <summary>Informazioni tecniche</summary>
+        <summary>Dettagli runtime</summary>
         <dl class="tech-info">
-          <dt>Modello</dt><dd id="tech-model">distilgpt2</dd>
-          <dt>Formato</dt><dd>ONNX quantizzato (q8)</dd>
-          <dt>Tokenizer</dt><dd id="tech-tokenizer">GPT-2 BPE</dd>
-          <dt>Vocabolario</dt><dd id="tech-vocab">50.257 token</dd>
-          <dt>Contesto massimo</dt><dd>1.024 token</dd>
+          <dt>Modello</dt><dd id="tech-model">Qwen2.5-0.5B-Instruct</dd>
+          <dt>Formato</dt><dd id="tech-dtype">ONNX quantizzato (q4)</dd>
+          <dt>Tokenizer</dt><dd id="tech-tokenizer">Qwen2 BPE</dd>
+          <dt>Vocabolario</dt><dd id="tech-vocab">151.936 token</dd>
+          <dt>Contesto massimo</dt><dd id="tech-context">32.768 token</dd>
           <dt>Runtime</dt><dd id="tech-runtime">reale (Transformers.js) / mock deterministico</dd>
           <dt>Backend</dt><dd id="tech-backend">WebGPU / WASM</dd>
         </dl>
       </details>
     </section>
 
+    <!-- 2. CONTESTO, 3. RISULTATO, 4. AZIONE -->
     <section class="results" id="results" data-testid="results">
-      <h2>Tokenizzazione del prompt</h2>
-      <div id="prompt-preview" data-testid="prompt-preview" class="token-sequence preview"></div>
-      <p id="preview-meta" class="preview-meta" data-testid="preview-meta"></p>
-      <p class="note">Nota: i token non coincidono necessariamente con le parole — possono contenere spazi (␠), parti di parole o punteggiatura.</p>
+      <p id="step-status" class="step-status" data-testid="step-status" hidden></p>
 
-      <h2>Sequenza completa</h2>
-      <div id="token-sequence" data-testid="token-sequence" class="token-sequence empty"></div>
+      <div id="prompt-tokens-section" data-testid="prompt-tokens-section" hidden>
+        <h2>Prompt tokenizzato</h2>
+        <div id="prompt-preview" data-testid="prompt-preview" class="token-sequence preview"></div>
+        <p id="preview-meta" class="preview-meta" data-testid="preview-meta"></p>
+        <p class="note">Nota: i token non coincidono necessariamente con le parole — possono contenere spazi (␠), parti di parole o punteggiatura.</p>
+      </div>
 
-      <p id="context-message" data-testid="context-message" class="context-message" hidden></p>
+      <section id="next-step-panel" class="next-step-panel" data-testid="next-step-panel" hidden>
+        <div class="step-label">Contesto corrente</div>
+        <h2>Input del prossimo calcolo</h2>
+        <p id="next-step-explanation" class="step-explanation" data-testid="next-step-explanation"></p>
+        <div id="next-step-context" class="token-sequence calculation-context" data-testid="next-step-context"></div>
+        <p id="next-step-natural" class="step-natural" data-testid="next-step-natural"></p>
+      </section>
 
       <div class="cache-status" id="cache-status" data-testid="cache-status" hidden>
         <div>Contesto logico: <strong id="cache-logical"></strong> token</div>
@@ -137,7 +146,7 @@
       </div>
 
       <div id="step-result" data-testid="step-result" hidden>
-        <h2>Token successivo scelto</h2>
+        <h2>Risultato dell'ultimo calcolo</h2>
         <div class="chosen-card" data-testid="chosen-card">
           <span class="chosen-big" id="chosen-big"></span>
           <dl class="chosen-meta">
@@ -147,7 +156,7 @@
           </dl>
         </div>
 
-        <h3 class="ranking-title">Distribuzione del prossimo token</h3>
+        <h3 class="ranking-title">Classifica del prossimo token</h3>
         <table class="ranking">
           <thead>
             <tr><th>Rank</th><th>Token</th><th>Token ID</th><th>Probabilità</th></tr>
@@ -157,7 +166,7 @@
         <p id="params-applied" class="preview-meta" data-testid="params-applied"></p>
 
         <details id="history-panel" class="params" data-testid="history-panel">
-          <summary>Cronologia dei passi</summary>
+          <summary>Cronologia</summary>
           <div class="history-scroll">
             <table class="history-table">
               <thead>
@@ -174,21 +183,14 @@
         </details>
       </div>
 
-      <section id="next-step-panel" class="next-step-panel" data-testid="next-step-panel" hidden>
-        <div class="step-label">Prossimo calcolo</div>
-        <h2>Input usato dal modello</h2>
-        <p id="next-step-explanation" class="step-explanation" data-testid="next-step-explanation"></p>
-        <div id="next-step-context" class="token-sequence calculation-context" data-testid="next-step-context"></div>
-        <p id="next-step-natural" class="step-natural" data-testid="next-step-natural"></p>
-        <div class="step-actions">
-          <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary next-step-button" type="button" disabled>
-            Calcola token successivo
-          </button>
-        </div>
-      </section>
+      <div class="step-actions bottom-cta">
+        <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary next-step-button" type="button" disabled>
+          Calcola il primo token
+        </button>
+      </div>
 
       <p id="eos-message" class="context-message eos-message" data-testid="eos-message" hidden>
-        Token EOS generato. La sequenza è terminata.
+        Il modello ha prodotto EOS: la generazione è terminata.
       </p>
     </section>
   </main>
