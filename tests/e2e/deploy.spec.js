@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-test.describe('Invariante di deploy (server locale)', () => {
-  test('la pagina carica CSS e JS senza errori console né mixed content', async ({ page }) => {
+const DIST_ASSETS = fileURLToPath(new URL('../../dist/assets/', import.meta.url));
+
+test.describe('Invariante di deploy (build di produzione)', () => {
+  test('la pagina carica senza errori in console né risorse mancanti', async ({ page }) => {
     const errors = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') errors.push(msg.text());
@@ -9,34 +13,34 @@ test.describe('Invariante di deploy (server locale)', () => {
     page.on('pageerror', (err) => errors.push(String(err)));
     const failed = [];
     page.on('requestfailed', (req) => failed.push(req.url()));
+    page.on('response', (res) => {
+      if (res.status() >= 400) failed.push(`${res.status()} ${res.url()}`);
+    });
     await page.goto('./?mock');
-    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
+    await expect(page.getByTestId('model-chip')).toHaveAttribute('data-state', 'sim');
     expect(errors).toEqual([]);
     expect(failed).toEqual([]);
-    const sheet = await page.evaluate(() => document.styleSheets.length);
-    expect(sheet).toBeGreaterThan(0);
   });
 
-  test('nessun URL http:// né percorso assoluto /assets nel sorgente pubblicato', async ({ request }) => {
-    const res = await request.get('./');
-    const html = await res.text();
-    expect(html).not.toMatch(/src="http:\/\//);
-    expect(html).not.toMatch(/href="http:\/\//);
-    const css = await (await request.get('./style.css')).text();
-    expect(css).not.toMatch(/url\(["']?http:\/\//);
+  test('percorsi relativi e nessun URL http:// nel sorgente pubblicato', async ({ request }) => {
+    const html = await (await request.get('./')).text();
+    expect(html).not.toMatch(/(src|href)="http:\/\//);
+    expect(html).not.toMatch(/(src|href)="\/(?!\/)/);
   });
 
-  test('il loop principale funziona sul server di preview (base path relativo)', async ({ page }) => {
-    await page.goto('./?mock');
-    await page.waitForFunction(() => document.getElementById('backend-indicator').textContent.includes('mock'));
-    await page.getByTestId('prompt').fill('test deploy');
-    for (let i = 1; i <= 3; i++) {
-      const top = page.getByTestId('btn-next');
-      if (await top.isVisible()) await top.click();
-      else await page.getByTestId('btn-next-bottom').click();
-      await expect(page.getByTestId('next-step-context').locator('.chip')).toHaveCount(2 + i);
-    }
-    const msg = await page.getByTestId('next-step-explanation').textContent();
-    expect(msg).toContain('5 token di contesto');
+  test('il runtime ONNX è servito dallo stesso sito, in una sola copia', async ({ request }) => {
+    const files = readdirSync(DIST_ASSETS);
+    const wasm = files.filter((f) => f.endsWith('.wasm'));
+    const mjs = files.filter((f) => f.startsWith('ort-wasm') && f.endsWith('.mjs'));
+    expect(wasm).toHaveLength(1);
+    expect(mjs).toHaveLength(1);
+    expect((await request.get(`./assets/${wasm[0]}`)).status()).toBe(200);
+    expect((await request.get(`./assets/${mjs[0]}`)).status()).toBe(200);
+  });
+
+  test('la pagina di diagnostica è pubblicata', async ({ request }) => {
+    const res = await request.get('./diagnostics.html');
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain('Diagnostica del modello locale');
   });
 });

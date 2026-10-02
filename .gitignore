@@ -3,3 +3,5 @@ dist/
 playwright-report/
 test-results/
 *.log
+_spike/
+.cache/
