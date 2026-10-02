@@ -219,3 +219,28 @@ describe('motore: scelta del presentatore', () => {
     expect(ov.selected.id).toBe(ev.candidates[1].id);
   });
 });
+
+describe('motore: KV cache contro ricalcolo completo', () => {
+  it('il ricalcolo completo elabora tutta la sequenza a ogni passo e dà gli stessi token', async () => {
+    const run = async (cacheMode) => {
+      const { tf, engine } = await setup();
+      const b = await engine.begin({ text: 'Perché il cielo è blu?', policy: { kind: 'greedy' }, cacheMode });
+      expect(b.cacheMode).toBe(cacheMode);
+      const evs = [];
+      for (let i = 0; i < 5; i++) evs.push(await engine.step({ sessionId: b.sessionId }));
+      await engine.end();
+      return { evs, b, caches: tf.created.model.caches };
+    };
+    const cached = await run('cache');
+    const naive = await run('naive');
+    expect(naive.evs.map((e) => e.selected.id)).toEqual(cached.evs.map((e) => e.selected.id));
+    naive.evs.forEach((e, i) => {
+      expect(e.cacheMode).toBe('naive');
+      expect(e.cachedTokens).toBe(0);
+      expect(e.processedTokens).toBe(naive.b.input.ids.length + i);
+    });
+    cached.evs.forEach((e, i) => expect(e.processedTokens).toBe(i === 0 ? cached.b.input.ids.length : 1));
+    // in modalità ricalcolo ogni cache creata viene subito liberata
+    expect(naive.caches.every((c) => c.disposed)).toBe(true);
+  });
+});

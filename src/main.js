@@ -9,7 +9,7 @@ import { EngineClient } from './engine/client.js';
 import { createMockClient } from './engine/mockClient.js';
 import { createController, STATES } from './core/controller.js';
 import {
-  MODELS, LIMITS, pickVariant, downloadBytes, formatBytes, suggestModelKey,
+  MODELS, LIMITS, pickVariant, downloadBytes, formatBytes, suggestModelKey, modelsFor, CPU_MODEL_KEY,
 } from './core/models.js';
 import {
   isModelCached, deleteModelFiles, requestPersistentStorage, storageEstimate,
@@ -47,6 +47,7 @@ const app = {
   status: 'checking',
   speed: 'normal',
   fullInput: false,
+  device: 'webgpu',
   view: null,
   lastAnnounce: 0,
 };
@@ -122,6 +123,7 @@ function setStage(name) {
 
 function resetView(trace) {
   app.view = {
+    historyRows: [],
     input: trace?.input ?? null,
     generated: [],
     answerParts: [],
@@ -316,6 +318,7 @@ async function introduce(trace, { replay, signal }) {
   $('policy-line').textContent = policyLabel(trace.policy);
   renderAnswer();
   renderTokens();
+  renderHistory();
   const tokens = trace.input.tokens;
   const userCount = tokens.filter((x) => x.origin === 'user' || x.origin === 'mixed').length;
   setStage('write');
@@ -359,7 +362,11 @@ async function present(step, { replay, signal, override = false }) {
     setStage('model');
     renderChart($('chart'), step, { phase: 'scores' });
     $('choice').textContent = '';
-    narrate('4', `${replay ? 'Il modello aveva dato' : 'Il modello ha dato'} un punteggio a ognuno dei ${formatNumber(step.vocabSize)} token del vocabolario. Trasformati in probabilità, sommano a 100%: qui vedi i più probabili.`, 'model');
+    let work;
+    if (step.cacheMode === 'naive') work = `Ha ricalcolato da capo tutti i ${formatNumber(step.processedTokens)} token (ricalcolo completo, senza KV cache).`;
+    else if (step.cachedTokens > 0) work = `Ha elaborato ${formatNumber(step.processedTokens)} token nuovo: gli altri ${formatNumber(step.cachedTokens)} li ricordava già (KV cache).`;
+    else work = `Ha elaborato tutti i ${formatNumber(step.processedTokens)} token dell'input.`;
+    narrate('4', `${work} Poi ${replay ? 'aveva dato' : 'ha dato'} un punteggio a ognuno dei ${formatNumber(step.vocabSize)} token del vocabolario: trasformati in probabilità sommano a 100%, qui vedi i più probabili.`, 'model');
     await anatomy.scored(step, { duration: t.scores, signal });
   }
   // 5 → scelta secondo la regola (o scelta del presentatore)
@@ -391,6 +398,10 @@ async function present(step, { replay, signal, override = false }) {
   else if (p.fragment) narrate('6', `L'ID ${s.id} è solo un pezzo (byte) di un carattere: il testo comparirà quando arriveranno gli altri pezzi.`);
   else narrate('6', [`Il numero ${s.id} torna testo: `, tq(label), '. La risposta cresce.']);
   await anatomy.decoded(step, { answerText: v.answerText, duration: t.decode, signal });
+  // cronologia: una riga per token (una scelta del presentatore sostituisce l'ultima)
+  if (override) v.historyRows.pop();
+  v.historyRows.push(historyRow(step));
+  renderHistory();
   // ↺ il token scelto entra nell'input del passo successivo
   addGeneratedToken(step);
   renderTokens({ animateLast: app.speed !== 'fast' });
@@ -412,6 +423,7 @@ function handleEvent(e) {
     case 'state':
     case 'busy':
       updateControls();
+      if (e.type === 'state') updateSettingsUi();
       break;
     case 'computing':
       setStage('model');
@@ -472,6 +484,78 @@ function readPolicy() {
   };
 }
 
+function readCacheMode() {
+  return document.querySelector('input[name="cache-mode"]:checked')?.value === 'naive' ? 'naive' : 'cache';
+}
+
+/* ------------------------------------------------------------------ */
+/* Impostazioni della chatbot                                          */
+/* ------------------------------------------------------------------ */
+
+function decimalIt(x) {
+  return String(x).replace('.', ',');
+}
+
+/** Riepilogo, spiegazione della regola, impostazioni attive/inattive. */
+function updateSettingsUi() {
+  const policy = readPolicy();
+  const sampling = policy.kind === 'sample';
+  document.querySelectorAll('.setting.needs-sampling').forEach((f) => {
+    f.classList.toggle('off', !sampling);
+    f.querySelectorAll('input').forEach((i) => { i.disabled = !sampling; });
+  });
+  $('policy-explain').textContent = sampling
+    ? "L'app estrae un token a sorte, in proporzione alle probabilità (dopo temperatura e top-p): di solito esce uno dei primi, ma può uscire anche un token meno probabile. Ripetendo la stessa domanda la risposta può cambiare."
+    : "L'app prende sempre il token con la probabilità più alta (decodifica «greedy»): la stessa domanda dà sempre la stessa risposta. Temperatura e top-p qui non servono.";
+  const parts = [
+    sampling ? `Scelta: estrazione (temperatura ${decimalIt($('temperature').value)}, top-p ${decimalIt($('top-p').value)})` : 'Scelta: sempre il più probabile',
+    readCacheMode() === 'naive' ? 'Calcolo: ricalcolo completo' : 'Calcolo: KV cache',
+    `Max ${$('max-tokens').value} token`,
+  ];
+  $('settings-recap').textContent = parts.join(' · ');
+  const running = controller.state !== STATES.IDLE && controller.state !== STATES.DONE;
+  $('settings-note').textContent = running ? 'Generazione in corso: le modifiche varranno dal prossimo «Avvia».' : '';
+}
+
+/** Passando sopra un'impostazione si evidenzia la fase dell'anatomia in cui agisce. */
+function wireSettingHints() {
+  document.querySelectorAll('.setting[data-stage-hint]').forEach((f) => {
+    const stage = f.dataset.stageHint;
+    const on = () => document.querySelectorAll(`#anatomy [data-stage="${stage}"]`).forEach((n) => n.classList.add('setting-hint'));
+    const off = () => document.querySelectorAll('#anatomy .setting-hint').forEach((n) => n.classList.remove('setting-hint'));
+    f.addEventListener('mouseenter', on);
+    f.addEventListener('mouseleave', off);
+    f.addEventListener('focusin', on);
+    f.addEventListener('focusout', off);
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Cronologia dei token                                                 */
+/* ------------------------------------------------------------------ */
+
+function historyRow(step) {
+  const s = step.selected;
+  const by = step.override ? 'te (presentatore)' : (step.policy.kind === 'greedy' ? 'regola: il più probabile' : 'regola: estrazione');
+  const work = step.cacheMode === 'naive'
+    ? `${formatNumber(step.processedTokens)} (ricalcolo completo)`
+    : `${formatNumber(step.processedTokens)} + ${formatNumber(step.cachedTokens)} in cache`;
+  const time = app.view?.replay ? `${formatNumber(Math.round(step.timing.stepMs))} ms (registrato)` : `${formatNumber(Math.round(step.timing.stepMs))} ms`;
+  return [String(step.index + 1), tokenLabel(s), String(s.id), formatPercent(s.modelProb), `${s.rank}°`, by, work, time];
+}
+
+function renderHistory() {
+  const body = $('history-body');
+  clear(body);
+  const rows = app.view?.historyRows ?? [];
+  rows.forEach((cells, i) => {
+    const tr = el('tr', { class: i === rows.length - 1 ? 'last' : '' });
+    cells.forEach((c, k) => tr.append(el(k === 1 ? 'th' : 'td', k === 1 ? { scope: 'row', class: 'tok-cell' } : {}, c)));
+    body.append(tr);
+  });
+  $('history-count').textContent = rows.length ? `(${rows.length})` : '';
+}
+
 function readSeed() {
   const raw = $('seed').value.trim();
   if (raw === '') return undefined;
@@ -503,6 +587,7 @@ async function onPrimary() {
     policy: readPolicy(),
     seed: readSeed(),
     maxNewTokens: Number($('max-tokens').value),
+    cacheMode: readCacheMode(),
     meta: {
       model: app.info,
       simulated: SIMULATED,
@@ -610,7 +695,8 @@ function renderTech() {
     ['Repository', i.modelId],
     ['Revisione', i.revision?.slice(0, 12)],
     ['Precisione', i.dtype],
-    ['Esecuzione', SIMULATED ? 'simulazione (nessun modello reale)' : `WebGPU${p?.adapter?.vendor ? ` · ${p.adapter.vendor} ${p.adapter.architecture}` : ''}`],
+    ['Esecuzione', SIMULATED ? 'simulazione (nessun modello reale)'
+      : (app.device === 'wasm' ? 'processore (WASM), senza scheda grafica' : `WebGPU${p?.adapter?.vendor ? ` · ${p.adapter.vendor} ${p.adapter.architecture}` : ''}`)],
     ['Vocabolario', i.vocabSize ? `${formatNumber(i.vocabSize)} token` : 'noto al primo passo'],
     ['Token di fine', i.eosTokens?.join('  ')],
     ['Download', i.downloadBytes ? formatBytes(i.downloadBytes) : null],
@@ -654,13 +740,16 @@ async function renderModelChoice() {
   const box = $('model-choice');
   clear(box);
   box.append(el('legend', { class: 'visually-hidden' }, 'Modello'));
-  const suggested = suggestModelKey({ deviceMemoryGB: navigator.deviceMemory });
-  for (const m of Object.values(MODELS)) {
-    const dtype = pickVariant(m, { shaderF16: app.probe?.shaderF16 });
+  const suggested = app.device === 'wasm' ? CPU_MODEL_KEY : suggestModelKey({ deviceMemoryGB: navigator.deviceMemory });
+  for (const m of modelsFor(app.device)) {
+    const dtype = pickVariant(m, { shaderF16: app.probe?.shaderF16, device: app.device });
     const size = formatBytes(downloadBytes(m, dtype));
-    const desc = m.tier === 'recommended'
-      ? `Consigliato. Download ${size}. Risposte più accurate in italiano; serve un computer con molta memoria.`
-      : `Leggero. Download ${size}. Più veloce e meno esigente, ma sbaglia spesso i fatti.`;
+    const desc = {
+      recommended: `Consigliato. Download ${size}. Risposte più accurate in italiano; serve un computer con molta memoria.`,
+      light: `Leggero. Download ${size}. Più veloce e meno esigente, ma sbaglia spesso i fatti.`,
+      tiny: `Minimo. Download ${size}. Per computer con poca memoria: scrive in italiano, ma sbaglia spesso e volentieri.`,
+      cpu: `Senza scheda grafica. Download ${size}. Gira sul processore: è lento e quasi sempre ripete la domanda o risponde a caso. Serve solo a vedere il meccanismo.`,
+    }[m.tier] ?? `Download ${size}.`;
     const input = el('input', {
       type: 'radio', name: 'model', value: m.key, checked: m.key === app.modelKey, 'data-testid': `model-${m.key}`,
     });
@@ -678,7 +767,7 @@ async function renderModelChoice() {
 async function updateSetup() {
   const m = MODELS[app.modelKey];
   if (!m) return;
-  app.dtype = pickVariant(m, { shaderF16: app.probe?.shaderF16 });
+  app.dtype = pickVariant(m, { shaderF16: app.probe?.shaderF16, device: app.device });
   const bytes = downloadBytes(m, app.dtype);
   const cached = await isModelCached(m, app.dtype);
   const btn = $('btn-load');
@@ -689,18 +778,19 @@ async function updateSetup() {
   const notes = [];
   if (cached) notes.push('I file sono già salvati in questo browser: non serve riscaricarli.');
   else notes.push(`Il download (${formatBytes(bytes)}) avviene solo quando premi il pulsante; poi i file restano salvati nel browser.`);
-  if (!app.probe?.shaderF16) notes.push('La scheda grafica non supporta i calcoli a 16 bit: si usa la versione a precisione mista più grande.');
+  if (app.device === 'wasm') notes.push('Senza WebGPU il modello gira sul processore: solo il modello più piccolo è utilizzabile.');
+  else if (!app.probe?.shaderF16) notes.push('La scheda grafica non supporta i calcoli a 16 bit: si usa la versione a precisione mista più grande.');
   const est = await storageEstimate();
   if (!cached && est && est.quota - est.usage < bytes * 1.1) {
     notes.push('Attenzione: lo spazio disponibile per il browser sembra insufficiente per salvare il modello; potrebbe essere necessario riscaricarlo ogni volta.');
   }
   const suggested = suggestModelKey({ deviceMemoryGB: navigator.deviceMemory });
-  if (suggested !== app.modelKey && m.tier === 'recommended') {
-    notes.push('Il browser segnala meno di 16 GB di memoria: il modello consigliato potrebbe non caricarsi. In quel caso usa il modello leggero.');
+  if (app.device === 'webgpu' && suggested !== app.modelKey && m.tier === 'recommended') {
+    notes.push('Il browser segnala poca memoria: il modello consigliato potrebbe non caricarsi. In quel caso usa il modello leggero o quello minimo.');
   }
   $('setup-note').textContent = notes.join(' ');
   $('privacy-sizes').textContent = Object.values(MODELS)
-    .map((x) => `${x.name}: ${formatBytes(downloadBytes(x, pickVariant(x, { shaderF16: app.probe?.shaderF16 })))} da scaricare`)
+    .map((x) => `${x.name}: ${formatBytes(downloadBytes(x, pickVariant(x, { shaderF16: app.probe?.shaderF16, device: (x.devices ?? ['webgpu'])[0] })))} da scaricare`)
     .join(' · ');
 }
 
@@ -743,16 +833,19 @@ async function loadModel() {
     const info = await app.client.call('load', {
       modelKey: m.key,
       dtype: app.dtype,
+      device: app.device,
       shaderF16: app.probe?.shaderF16,
     });
     bar.removeAttribute('value');
-    text.textContent = 'Prima esecuzione di prova: la scheda grafica prepara i suoi programmi…';
+    text.textContent = app.device === 'wasm'
+      ? 'Prima esecuzione di prova sul processore…'
+      : 'Prima esecuzione di prova: la scheda grafica prepara i suoi programmi…';
     const warm = await app.client.call('warmup');
     app.info = { ...info, warmupMs: warm.warmupMs, totalLoadMs: Math.round(performance.now() - t0) };
     app.status = 'ready';
     $('setup').hidden = true;
     $('load-progress').hidden = true;
-    setModelChip('ready', `${m.name} · pronto`);
+    setModelChip('ready', `${m.name} · pronto${app.device === 'wasm' ? ' (processore)' : ''}`);
     renderTech();
     announce(`Modello pronto: ${m.name}. Scrivi una domanda e premi Avvia.`);
   } catch (err) {
@@ -761,7 +854,7 @@ async function loadModel() {
     app.client = null;
     $('load-progress').hidden = true;
     setModelChip('error', `${m.name}: non caricato`);
-    const light = m.tier === 'recommended' ? ' Puoi provare il modello leggero.' : '';
+    const light = { recommended: ' Puoi provare il modello leggero.', light: ' Puoi provare il modello minimo.' }[m.tier] ?? '';
     showSetupError(`Il modello non si è caricato: ${err.message}.${light}`);
   } finally {
     document.querySelectorAll('input[name="model"]').forEach((i) => { i.disabled = false; });
@@ -865,12 +958,14 @@ function wireUi() {
     projector.setAttribute('aria-pressed', String(on));
     storageSet('projector', on ? '1' : '0');
   });
-  document.querySelectorAll('input[name="policy"]').forEach((r) => r.addEventListener('change', () => {
-    $('sample-options').hidden = readPolicy().kind !== 'sample';
-    if (controller.state !== STATES.IDLE && controller.state !== STATES.DONE) {
-      $('adv-note').textContent = 'La nuova regola vale dal prossimo avvio.';
-    }
-  }));
+  document.querySelectorAll('input[name="policy"], input[name="cache-mode"], #temperature, #top-p, #max-tokens')
+    .forEach((i) => i.addEventListener('input', updateSettingsUi));
+  document.querySelectorAll('input[name="policy"], input[name="cache-mode"]')
+    .forEach((i) => i.addEventListener('change', updateSettingsUi));
+  const panel = $('settings-panel');
+  if (storageGet('settings-open') === '1') panel.open = true;
+  panel.addEventListener('toggle', () => storageSet('settings-open', panel.open ? '1' : '0'));
+  wireSettingHints();
   const bindOutput = (id, outId) => {
     const update = () => { $(outId).textContent = String($(id).value).replace('.', ','); };
     $(id).addEventListener('input', update);
@@ -879,6 +974,7 @@ function wireUi() {
   bindOutput('temperature', 'temperature-out');
   bindOutput('top-p', 'top-p-out');
   bindOutput('max-tokens', 'max-tokens-out');
+  updateSettingsUi();
 
   document.addEventListener('keydown', (e) => {
     const tag = e.target?.tagName;
@@ -942,20 +1038,19 @@ async function boot() {
 
   setModelChip('off', 'Verifica del browser…');
   app.probe = await probeWebGPU();
+  app.device = app.probe.ok ? 'webgpu' : 'wasm';
   if (!app.probe.ok) {
-    app.status = 'unsupported';
-    setModelChip('error', 'WebGPU non disponibile');
-    $('btn-load').disabled = true;
-    $('btn-load').textContent = 'Modello non disponibile su questo browser';
-    showSetupError(PROBE_MESSAGES[app.probe.reason] ?? 'WebGPU non disponibile.');
-    $('setup-note').textContent = 'Il modello non viene eseguito senza scheda grafica: sul processore sarebbe troppo lento per una lezione.';
-    updateControls();
-    return;
+    // Nessun ripiego silenzioso: si spiega il problema e si offre, come scelta
+    // esplicita, il solo modello abbastanza piccolo da girare sul processore.
+    showSetupError(`${PROBE_MESSAGES[app.probe.reason] ?? 'WebGPU non disponibile.'} Puoi comunque usare un modello piccolissimo sul processore: è lento e poco capace, ma mostra il meccanismo.`);
+    setModelChip('off', 'Senza WebGPU');
   }
   const saved = storageGet('model');
-  app.modelKey = MODELS[saved] ? saved : suggestModelKey({ deviceMemoryGB: navigator.deviceMemory });
+  const allowed = modelsFor(app.device).map((m) => m.key);
+  app.modelKey = allowed.includes(saved) ? saved
+    : (app.device === 'wasm' ? CPU_MODEL_KEY : suggestModelKey({ deviceMemoryGB: navigator.deviceMemory }));
   app.status = 'needs-load';
-  setModelChip('off', 'Modello non caricato');
+  if (app.probe.ok) setModelChip('off', 'Modello non caricato');
   await renderModelChoice();
   await updateSetup();
   updateControls();

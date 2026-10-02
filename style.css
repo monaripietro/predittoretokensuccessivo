@@ -822,3 +822,86 @@ input[type="range"] { width: 100%; accent-color: var(--brand); }
 .pick-hint { min-height: 3em; margin: 0.25rem 0 0; }
 .pick-hint.off { visibility: hidden; }
 .answer { min-height: 4.4em; }
+
+/* ---------- Impostazioni della chatbot ---------- */
+
+.settings { padding: 0; overflow: hidden; }
+.settings-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 1.25rem;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-panel > summary::-webkit-details-marker { display: none; }
+.settings-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 1rem; min-width: 0; margin-right: auto; }
+.settings-title { font-weight: 800; font-size: 0.95rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-strong); }
+.settings-recap { font-size: 0.92rem; font-weight: 600; color: var(--ink-2); }
+.settings-open::after {
+  content: 'Modifica ▾';
+  font-size: 0.85rem; font-weight: 700; color: var(--brand-strong);
+  border: 2px solid var(--card-line); border-radius: 999px; padding: 0.3rem 0.85rem; white-space: nowrap;
+}
+.settings-panel[open] .settings-open::after { content: 'Chiudi ▴'; }
+.settings-panel > summary:hover .settings-open::after { background: var(--brand-wash); }
+.settings-intro, .settings-note { margin: 0 1.25rem 0.75rem; font-size: 0.92rem; color: var(--ink-2); max-width: 80ch; }
+.settings-note:empty { display: none; }
+.settings-note { font-weight: 700; color: var(--brand-strong); }
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+  padding: 0 1.25rem 1.25rem;
+}
+.setting {
+  border: 2px solid var(--card-line);
+  border-radius: 12px;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--surface);
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+  transition: border-color 0.2s, opacity 0.2s, background-color 0.2s;
+}
+.setting:hover, .setting:focus-within { border-color: var(--brand); }
+.setting-wide { grid-column: 1 / -1; }
+.setting legend { font-weight: 800; font-size: 1.02rem; padding: 0 0.3rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.setting legend output { font-variant-numeric: tabular-nums; background: var(--lime); color: var(--lime-ink); border-radius: 6px; padding: 0 0.4rem; }
+.stage-tag {
+  font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  border-radius: 999px; padding: 0.15rem 0.55rem;
+  background: var(--surface-2); color: var(--brand-strong); border: 1.5px solid var(--card-line);
+}
+.stage-tag.model { background: var(--brand); color: #fff; border-color: var(--brand); }
+.setting-explain { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink-2); }
+.setting-off { display: none; margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--muted); }
+.setting.off { background: var(--surface-2); }
+.setting.off .setting-off { display: block; }
+.setting.off input, .setting.off .range-ends, .setting.off .setting-explain, .setting.off legend output { opacity: 0.5; }
+.range-ends { display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-top: -0.3rem; }
+.range-label { font-weight: 700; }
+.setting input[type="number"] { font: inherit; padding: 0.4rem 0.6rem; border: 2px solid var(--card-line); border-radius: 8px; background: var(--surface); color: var(--ink); max-width: 16rem; }
+.segmented { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.25rem; border-radius: 12px; background: var(--surface-2); border: 2px solid var(--card-line); justify-self: start; }
+.segmented label { position: relative; cursor: pointer; }
+.segmented input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.segmented span { display: block; padding: 0.45rem 0.9rem; border-radius: 9px; font-weight: 700; font-size: 0.92rem; color: var(--ink-2); transition: background-color 0.15s, color 0.15s; }
+.segmented input:checked + span { background: var(--brand); color: #fff; box-shadow: var(--shadow); }
+.segmented input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.setting-more > summary { font-size: 0.88rem; font-weight: 700; color: var(--brand-strong); padding: 0.2rem 0; cursor: pointer; }
+.setting-more > p { font-size: 0.9rem; color: var(--ink-2); margin: 0.4rem 0; max-width: 80ch; }
+
+/* la fase dell'anatomia su cui agisce l'impostazione indicata */
+#anatomy .setting-hint { outline: 4px dashed var(--lime); outline-offset: 5px; }
+
+/* ---------- Cronologia dei token ---------- */
+
+.history { margin-top: 0.75rem; border-top: 2px solid var(--card-line); }
+.history > summary { padding: 0.7rem 0.2rem; font-weight: 700; cursor: pointer; color: var(--brand-strong); }
+.history-scroll { max-height: 20rem; overflow: auto; overscroll-behavior: contain; border-radius: 10px; border: 2px solid var(--card-line); }
+.history-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.history-table th, .history-table td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.history-table thead th { position: sticky; top: 0; background: var(--surface-2); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--brand-strong); }
+.history-table .tok-cell { font-weight: 700; white-space: pre; }
+.history-table tr.last { background: var(--brand-wash); }

@@ -48,7 +48,7 @@ export async function probeWebGPU(nav = globalThis.navigator) {
 }
 
 export const PROBE_MESSAGES = {
-  'no-webgpu': 'Questo browser non offre WebGPU. Usa Chrome o Edge aggiornati su computer (WebGPU è necessario per far girare il modello in locale).',
+  'no-webgpu': 'Questo browser non offre WebGPU, che serve per i modelli più capaci. Per usarli apri la pagina con Chrome o Edge aggiornati su computer.',
   'no-adapter': 'WebGPU è presente ma nessuna scheda grafica è disponibile (può essere disattivata o bloccata dal sistema). Prova un altro computer o aggiorna i driver.',
   'software-adapter': 'È disponibile solo un adattatore WebGPU software: il modello sarebbe troppo lento. Prova un computer con una scheda grafica supportata.',
   limits: 'La scheda grafica ha limiti di memoria troppo bassi per questo modello.',

@@ -263,7 +263,7 @@ test.describe('regola di scelta', () => {
     await expect(page.getByTestId('chart-legend')).toBeHidden();
     await expect(page.locator('[data-testid="chart"] .v-policy')).toHaveCount(0);
 
-    await page.getByTestId('advanced').locator('summary').click();
+    await page.locator('#settings-panel > summary').click();
     await page.getByTestId('policy-sample').check();
     await page.getByTestId('seed').fill('7');
     await runToEnd(page, 'Perché il cielo è blu?');
@@ -305,7 +305,7 @@ test.describe('input del modello', () => {
 });
 
 test.describe('preparazione del modello (senza download)', () => {
-  test('senza WebGPU: messaggio chiaro, nessun download e nessun ripiego sul processore', async ({ page }) => {
+  test('senza WebGPU: messaggio chiaro, nessun download automatico, processore solo su scelta esplicita', async ({ page }) => {
     const hub = [];
     page.on('request', (r) => {
       if (r.url().includes('huggingface.co')) hub.push(r.url());
@@ -315,7 +315,11 @@ test.describe('preparazione del modello (senza download)', () => {
     });
     await page.goto('./');
     await expect(page.getByTestId('setup-error')).toContainText('WebGPU');
-    await expect(page.getByTestId('btn-load')).toBeDisabled();
+    // si offre solo, come scelta esplicita, il modello piccolissimo per il processore
+    await expect(page.getByTestId('model-choice').locator('input[name="model"]')).toHaveCount(1);
+    await expect(page.getByTestId('model-smollm2-135m')).toBeChecked();
+    await expect(page.getByTestId('model-choice')).toContainText('processore');
+    await expect(page.getByTestId('btn-load')).toContainText('SmolLM2 135M');
     await expect(page.getByTestId('btn-primary')).toBeDisabled();
     await page.waitForTimeout(500);
     expect(hub).toEqual([]);
@@ -362,5 +366,82 @@ test.describe('preparazione del modello (senza download)', () => {
     await page.goto('./');
     await expect(page.getByTestId('model-qwen3-0.6b')).toBeChecked();
     await expect(page.getByTestId('model-choice')).toContainText('suggerito per questo computer');
+  });
+});
+
+test.describe('preparazione: hardware modesto', () => {
+  test('con pochissima memoria dichiarata viene suggerito il modello minimo', async ({ page }) => {
+    await page.addInitScript(() => {
+      const adapter = {
+        features: new Set(['shader-f16']),
+        limits: { maxBufferSize: 2 ** 31, maxStorageBufferBindingSize: 2 ** 31 - 4 },
+        info: {},
+      };
+      Object.defineProperty(Navigator.prototype, 'gpu', { get: () => ({ requestAdapter: async () => adapter }), configurable: true });
+      Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => 4, configurable: true });
+    });
+    await page.goto('./');
+    await expect(page.getByTestId('model-gemma-3-270m')).toBeChecked();
+    await expect(page.getByTestId('model-choice')).toContainText('Minimo');
+    await expect(page.getByTestId('btn-load')).toContainText('Gemma 3 270M');
+  });
+});
+
+test.describe('impostazioni della chatbot', () => {
+  test.beforeEach(async ({ page }) => {
+    await openMock(page);
+  });
+
+  test('riepilogo sempre visibile; temperatura e top-p inattive con la regola «il più probabile»', async ({ page }) => {
+    await expect(page.getByTestId('settings-recap')).toHaveText('Scelta: sempre il più probabile · Calcolo: KV cache · Max 48 token');
+    await page.locator('#settings-panel > summary').click();
+    await expect(page.getByTestId('temperature')).toBeDisabled();
+    await expect(page.getByTestId('temperature-off')).toBeVisible();
+    await page.getByTestId('policy-sample').check();
+    await expect(page.getByTestId('temperature')).toBeEnabled();
+    await expect(page.getByTestId('settings-recap')).toContainText('estrazione (temperatura 1, top-p 0,95)');
+    await expect(page.getByTestId('policy-explain')).toContainText('a sorte');
+    // passando sopra un'impostazione si evidenzia la fase dell'anatomia
+    await page.locator('#temperature-setting').hover();
+    await expect(page.locator('#anatomy [data-stage="select"].setting-hint').first()).toBeVisible();
+  });
+
+  test('ricalcolo completo: a ogni passo il modello rielabora tutta la sequenza, e lo dice', async ({ page }) => {
+    await page.locator('#settings-panel > summary').click();
+    await page.getByTestId('cache-naive').check();
+    await expect(page.getByTestId('settings-recap')).toContainText('ricalcolo completo');
+    await setSpeed(page, 'fast');
+    await start(page, 'Perché il cielo è blu?');
+    for (let i = 0; i < 3; i++) {
+      await page.getByTestId('btn-primary').click();
+      await page.waitForFunction((n) => window.__nextTokenDemo.trace.steps.length === n, i + 1);
+      await expect(page.getByTestId('btn-primary')).toBeEnabled();
+    }
+    const trace = await demo(page, () => window.__nextTokenDemo.trace);
+    expect(trace.cacheMode).toBe('naive');
+    trace.steps.forEach((st, i) => {
+      expect(st.cachedTokens).toBe(0);
+      expect(st.processedTokens).toBe(trace.input.ids.length + i);
+    });
+    await expect(page.locator('#narration .nar-list > .nar-item[data-n="4"]')).toContainText('ricalcolato da capo');
+  });
+
+  test('cronologia: una riga per token, la scelta del presentatore sostituisce la riga', async ({ page }) => {
+    await setSpeed(page, 'fast');
+    await start(page, 'Perché il cielo è blu?');
+    for (let i = 0; i < 2; i++) {
+      await page.getByTestId('btn-primary').click();
+      await page.waitForFunction((n) => window.__nextTokenDemo.trace.steps.length === n, i + 1);
+      await expect(page.getByTestId('btn-primary')).toBeEnabled();
+    }
+    await page.getByTestId('history').locator('summary').click();
+    const rows = page.getByTestId('history-body').locator('tr');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText('regola: il più probabile');
+    await page.locator('[data-testid="chart"] li.row').nth(2).click();
+    await expect(page.getByTestId('choice')).toContainText('Scelto da te');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText('te (presentatore)');
+    await expect(rows.nth(1)).toContainText('3°');
   });
 });

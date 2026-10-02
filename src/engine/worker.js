@@ -35,7 +35,8 @@ const handlers = {
   async load(payload) {
     configureRuntime();
     engine = createEngine(tf, {
-      device: 'webgpu',
+      // WebGPU di norma; 'wasm' (processore) solo su richiesta esplicita
+      device: payload.device === 'wasm' ? 'wasm' : 'webgpu',
       onProgress: (p) => self.postMessage({ type: 'progress', payload: p }),
     });
     return engine.load(payload);

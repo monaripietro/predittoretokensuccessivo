@@ -75,6 +75,71 @@
       <p class="shortcuts muted">Si procede un token alla volta. Tasti: <kbd>→</kbd> o <kbd>Spazio</kbd> prossimo token · <kbd>Esc</kbd> ferma</p>
     </section>
 
+    <!-- Impostazioni della chatbot: regole dell'applicazione, collegate alle fasi dell'anatomia -->
+    <section class="card settings" aria-labelledby="settings-title" data-testid="settings">
+      <details id="settings-panel" class="settings-panel" data-testid="settings-panel">
+        <summary class="settings-summary">
+          <span class="settings-head">
+            <span id="settings-title" class="settings-title">Impostazioni della chatbot</span>
+            <span id="settings-recap" class="settings-recap" data-testid="settings-recap"></span>
+          </span>
+          <span class="settings-open" aria-hidden="true"></span>
+        </summary>
+        <p class="settings-intro">Queste regole sono dell'<strong>applicazione</strong>, non del modello: il modello calcola sempre gli stessi punteggi. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Le modifiche valgono dal prossimo «Avvia».</p>
+        <p id="settings-note" class="settings-note" role="status" data-testid="settings-note"></p>
+        <div class="settings-grid">
+          <fieldset class="setting setting-wide" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Come viene scelto il prossimo token</legend>
+            <div class="segmented" role="radiogroup" aria-label="Regola di scelta del token">
+              <label><input type="radio" name="policy" value="greedy" checked data-testid="policy-greedy" /><span>Sempre il più probabile</span></label>
+              <label><input type="radio" name="policy" value="sample" data-testid="policy-sample" /><span>Estrazione casuale pesata</span></label>
+            </div>
+            <p id="policy-explain" class="setting-explain" data-testid="policy-explain"></p>
+            <details class="setting-more">
+              <summary>Come funziona l'estrazione: la ruota della fortuna</summary>
+              <p>Con l'estrazione, l'app non prende sempre il primo token in classifica. Il modello assegna una probabilità ai token possibili; poi l'app sceglie con un'estrazione pesata: i token più probabili hanno più possibilità di uscire, ma non sono gli unici che possono uscire.</p>
+              <p>Se un token ha probabilità 60% e un altro 20%, il primo uscirà più spesso, ma anche il secondo può essere scelto. È come una ruota della fortuna: i token più probabili hanno fette più grandi, quelli meno probabili fette più piccole, e la ruota gira.</p>
+              <p>In questa pagina, quando un'estrazione sceglie un token che non è il primo, il racconto e il grafico lo dicono esplicitamente («è solo 3° in classifica»).</p>
+            </details>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="temperature-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Temperatura <output id="temperature-out">1</output></legend>
+            <input id="temperature" type="range" min="0.1" max="2" step="0.1" value="1" aria-describedby="temperature-explain" data-testid="temperature" />
+            <div class="range-ends" aria-hidden="true"><span>più prevedibile</span><span>più varia</span></div>
+            <p id="temperature-explain" class="setting-explain">Controlla quanto la scelta resta vicina al token più probabile. <strong>Bassa</strong>: si resta vicini ai token più probabili, la risposta è più prevedibile e stabile. <strong>Alta</strong>: anche i token meno probabili ricevono spazio, la risposta può diventare più varia. La temperatura non sceglie da sola: cambia l'equilibrio delle probabilità prima dell'estrazione.</p>
+            <p class="setting-off" data-testid="temperature-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="top-p-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Top-p <output id="top-p-out">0,95</output></legend>
+            <input id="top-p" type="range" min="0.5" max="1" step="0.05" value="0.95" aria-describedby="top-p-explain" data-testid="top-p" />
+            <div class="range-ends" aria-hidden="true"><span>rosa più ristretta</span><span>rosa più ampia</span></div>
+            <p id="top-p-explain" class="setting-explain">Riduce la scelta ai token più plausibili: si tengono i candidati più probabili finché, sommati, arrivano a questa percentuale. <strong>Più basso</strong>: rosa ristretta, scelta più prudente. <strong>Più alto</strong>: rosa più ampia e varia. In sintesi: la temperatura cambia il peso dei candidati, il top-p decide quanto è ampia la rosa tra cui estrarre.</p>
+            <p class="setting-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="seed-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Seme casuale</legend>
+            <input id="seed" type="number" min="0" step="1" inputmode="numeric" placeholder="vuoto = nuovo a ogni avvio" aria-describedby="seed-explain" data-testid="seed" />
+            <p id="seed-explain" class="setting-explain">Vuoto: estrazioni nuove a ogni avvio. Con un numero, le stesse estrazioni si ripetono: utile per preparare la lezione. Ordine applicato: temperatura → al massimo 64 candidati → top-p → probabilità rinormalizzate.</p>
+            <p class="setting-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting" data-stage-hint="model">
+            <legend><span class="stage-tag model">fase 4 · Modello</span>Modalità di calcolo</legend>
+            <div class="segmented" role="radiogroup" aria-label="Modalità di calcolo">
+              <label><input type="radio" name="cache-mode" value="cache" checked data-testid="cache-kv" /><span>KV cache</span></label>
+              <label><input type="radio" name="cache-mode" value="naive" data-testid="cache-naive" /><span>Ricalcolo completo</span></label>
+            </div>
+            <p class="setting-explain"><strong>KV cache</strong>: il modello ricalcola solo i token nuovi e riusa i calcoli già fatti per tutti gli altri (la sua «memoria» dei passi precedenti). <strong>Ricalcolo completo</strong> (naive): a ogni passo ricalcola l'intera sequenza da capo. Le probabilità non cambiano, salvo minuscoli arrotondamenti: cambia quanto lavoro fa il modello, che vedi nella frase «4» del racconto.</p>
+          </fieldset>
+          <fieldset class="setting" data-stage-hint="loop">
+            <legend><span class="stage-tag">↺ Ciclo</span>Lunghezza massima della risposta</legend>
+            <label class="range-label" for="max-tokens"><output id="max-tokens-out">48</output> token</label>
+            <input id="max-tokens" type="range" min="8" max="128" step="8" value="48" aria-describedby="max-tokens-explain" data-testid="max-tokens" />
+            <p id="max-tokens-explain" class="setting-explain">L'app ferma il ciclo dopo questo numero di token, anche se il modello non ha ancora scelto il token di fine. La domanda può essere lunga al massimo 240 caratteri.</p>
+          </fieldset>
+        </div>
+      </details>
+    </section>
+
     <!-- Anatomia di una chatbot: diagramma animato sugli eventi reali -->
     <section class="anatomy" aria-labelledby="anatomy-title" data-testid="journey">
       <h2 id="anatomy-title" class="section-title">Anatomia di una chatbot</h2>
@@ -126,6 +191,17 @@
       </div>
       <p id="answer" class="answer" data-testid="answer"></p>
       <p id="finish-note" class="note" data-testid="finish-note"></p>
+      <details id="history" class="history" data-testid="history">
+        <summary>Cronologia dei token <span id="history-count" class="count" data-testid="history-count"></span></summary>
+        <div class="history-scroll">
+          <table class="history-table">
+            <thead>
+              <tr><th scope="col">#</th><th scope="col">Token</th><th scope="col">ID</th><th scope="col">Probabilità</th><th scope="col">In classifica</th><th scope="col">Scelto da</th><th scope="col">Token calcolati</th><th scope="col">Tempo</th></tr>
+            </thead>
+            <tbody id="history-body" data-testid="history-body"></tbody>
+          </table>
+        </div>
+      </details>
       <div class="after-actions">
         <button id="btn-replay" class="secondary" type="button" data-testid="btn-replay" hidden>Rivedi la registrazione</button>
         <button id="btn-export" class="link" type="button" data-testid="btn-export" hidden>Scarica la registrazione (JSON)</button>
@@ -163,30 +239,10 @@
       </details>
     </section>
 
-    <!-- Opzioni avanzate -->
+    <!-- Dettagli tecnici -->
     <details id="advanced" class="card advanced" data-testid="advanced">
-      <summary>Opzioni avanzate e dettagli tecnici</summary>
+      <summary>Dettagli tecnici</summary>
       <div class="adv-grid">
-        <fieldset>
-          <legend>Regola di scelta del token</legend>
-          <label class="radio"><input type="radio" name="policy" value="greedy" checked data-testid="policy-greedy" /> Sempre il più probabile (greedy)</label>
-          <label class="radio"><input type="radio" name="policy" value="sample" data-testid="policy-sample" /> Estrazione casuale pesata</label>
-          <div id="sample-options" class="sample-options" hidden>
-            <label for="temperature">Temperatura <output id="temperature-out">1</output></label>
-            <input id="temperature" type="range" min="0.1" max="2" step="0.1" value="1" data-testid="temperature" />
-            <label for="top-p">Top-p <output id="top-p-out">0,95</output></label>
-            <input id="top-p" type="range" min="0.5" max="1" step="0.05" value="0.95" data-testid="top-p" />
-            <label for="seed">Seme casuale (vuoto = nuovo a ogni avvio)</label>
-            <input id="seed" type="number" min="0" step="1" inputmode="numeric" data-testid="seed" />
-            <p class="note">Massimo 64 candidati ammessi all'estrazione. Ordine: temperatura → 64 candidati → top-p → rinormalizzazione.</p>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Lunghezza massima della risposta</legend>
-          <label for="max-tokens"><output id="max-tokens-out">48</output> token</label>
-          <input id="max-tokens" type="range" min="8" max="128" step="8" value="48" data-testid="max-tokens" />
-          <p class="note">La domanda può essere lunga al massimo 240 caratteri.</p>
-        </fieldset>
         <fieldset>
           <legend>Modello</legend>
           <dl id="tech" class="tech" data-testid="tech"></dl>
@@ -206,7 +262,7 @@
   </main>
 
   <footer class="footer">
-    <p>Tutto il calcolo avviene nel browser con <a href="https://huggingface.co/docs/transformers.js">Transformers.js</a> e WebGPU. Modelli: Gemma 4 E2B (Google DeepMind) e Qwen3 0.6B (Alibaba Qwen), licenza Apache-2.0, conversioni ONNX di onnx-community.</p>
+    <p>Tutto il calcolo avviene nel browser con <a href="https://huggingface.co/docs/transformers.js">Transformers.js</a> e WebGPU. Modelli: Gemma 4 E2B (Google DeepMind, Apache-2.0), Qwen3 0.6B (Qwen, Alibaba Cloud, Apache-2.0), Gemma 3 270M (Google DeepMind, Gemma Terms of Use), SmolLM2 135M (Hugging Face, Apache-2.0); conversioni ONNX di onnx-community.</p>
   </footer>
 
   <script type="module" src="./src/main.js"></script>

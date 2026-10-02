@@ -122,7 +122,7 @@ export function createController({
    * ogni next() calcola un solo token. Con autoplay i token si susseguono da soli.
    */
   async function start({
-    text, policy, maxNewTokens, seed, meta = {}, autoplay = false,
+    text, policy, maxNewTokens, seed, meta = {}, autoplay = false, cacheMode = 'cache',
   }) {
     if (busy || ![STATES.IDLE, STATES.DONE].includes(state)) return false;
     stopRequested = false;
@@ -130,7 +130,9 @@ export function createController({
     setState(STATES.STARTING);
     let begun;
     try {
-      begun = await client.call('begin', { text, policy, maxNewTokens, seed });
+      begun = await client.call('begin', {
+        text, policy, maxNewTokens, seed, cacheMode,
+      });
     } catch (err) {
       setState(STATES.IDLE);
       onEvent({ type: 'error', error: err });
@@ -145,6 +147,7 @@ export function createController({
       policy: begun.policy,
       seed: begun.seed,
       maxNewTokens: begun.maxNewTokens,
+      cacheMode: begun.cacheMode ?? 'cache',
       steps: [],
       finish: null,
     };

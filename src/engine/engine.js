@@ -184,7 +184,13 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     session = null;
   }
 
-  function begin({ text, policy, seed, maxNewTokens = LIMITS.defaultNewTokens }) {
+  /**
+   * @param {'cache'|'naive'} [cacheMode] 'cache' = KV cache (si elaborano solo i
+   *   token nuovi); 'naive' = ricalcolo completo dell'intera sequenza a ogni passo.
+   */
+  function begin({
+    text, policy, seed, maxNewTokens = LIMITS.defaultNewTokens, cacheMode = 'cache',
+  }) {
     return serial(async () => {
       requireModel();
       await disposeSession();
@@ -201,6 +207,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         promptLength: input.ids.length,
         generated: [],
         cache: null,
+        cacheMode: cacheMode === 'naive' ? 'naive' : 'cache',
         policy: p,
         seed: s,
         random: p.kind === 'sample' ? mulberry32(s) : null,
@@ -208,7 +215,9 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         decoder: createPieceDecoder(tokenizer, isSpecial),
         finished: null,
       };
-      return { sessionId: session.id, input, policy: p, seed: p.kind === 'sample' ? s : null, maxNewTokens: n };
+      return {
+        sessionId: session.id, input, policy: p, seed: p.kind === 'sample' ? s : null, maxNewTokens: n, cacheMode: session.cacheMode,
+      };
     });
   }
 
@@ -221,6 +230,11 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       if (session.finished) throw new EngineError('finished', 'La generazione è già terminata.');
       const s = session;
       const contextLength = s.ids.length;
+      if (s.cacheMode === 'naive' && s.cache) {
+        // Ricalcolo completo: la cache del passo precedente viene buttata via.
+        await s.cache.dispose();
+        s.cache = null;
+      }
       const cachedBefore = s.cache ? s.cache.get_seq_length() : 0;
       const processor = new DecisionProcessor({
         policy: s.policy,
@@ -243,6 +257,10 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       });
       const elapsedMs = performance.now() - t0;
       s.cache = out.past_key_values ?? null;
+      if (s.cacheMode === 'naive' && s.cache) {
+        await s.cache.dispose();
+        s.cache = null;
+      }
       const sequence = toIdArray(out.sequences);
       const emitted = sequence[sequence.length - 1];
       const decision = processor.decision;
@@ -281,6 +299,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         contextLength,
         processedTokens: contextLength - cachedBefore,
         cachedTokens: cachedBefore,
+        cacheMode: s.cacheMode,
         candidates,
         other: decision.other,
         vocabSize: decision.vocabSize,

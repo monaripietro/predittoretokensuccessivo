@@ -58,10 +58,12 @@ async function run() {
     const spec = MODELS[modelKey];
     const n = Math.max(1, Math.min(128, Number($('n').value) || 32));
     const prompt = $('prompt').value;
+    const device = params.get('device') === 'wasm' ? 'wasm' : 'webgpu';
+    report.device = device;
     report.probe = await probeWebGPU();
-    show('WebGPU rilevato, avvio del worker…');
-    if (!report.probe.ok) throw new Error(`WebGPU non utilizzabile: ${report.probe.reason}`);
-    const dtype = $('dtype').value || pickVariant(spec, { shaderF16: report.probe.shaderF16 });
+    show('Avvio del worker…');
+    if (device === 'webgpu' && !report.probe.ok) throw new Error(`WebGPU non utilizzabile: ${report.probe.reason}`);
+    const dtype = $('dtype').value || (device === 'wasm' ? 'q8' : pickVariant(spec, { shaderF16: report.probe.shaderF16 }));
     report.model = { key: modelKey, id: spec.id, revision: spec.revision, dtype, declaredBytes: downloadBytes(spec, dtype) };
 
     let lastProgress = 0;
@@ -82,7 +84,7 @@ async function run() {
     });
     report.cachedBeforeLoad = await isModelCached(spec, dtype);
     const tLoad = performance.now();
-    const info = await client.call('load', { modelKey, dtype, shaderF16: report.probe.shaderF16 });
+    const info = await client.call('load', { modelKey, dtype, device, shaderF16: report.probe.shaderF16 });
     report.load = { ...info, wallMs: Math.round(performance.now() - tLoad), progressTotalBytes: maxTotal };
     if (!params.has('nowarmup')) {
       show('Esecuzione di prova (compilazione GPU)…');
