@@ -3,220 +3,268 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Next Token Lab</title>
+  <title>Come risponde una chatbot</title>
+  <meta name="description" content="Dimostrazione didattica: un modello linguistico vero gira nel browser e mostra, token per token, le probabilità reali da cui nasce una risposta." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='9' width='8' height='14' rx='2' fill='%232a78d6'/%3E%3Crect x='13' y='9' width='6' height='14' rx='2' fill='%2352514e'/%3E%3Crect x='21' y='9' width='8' height='14' rx='2' fill='%232a78d6' opacity='.5'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./style.css" />
-  <meta name="description" content="Demo didattica del ciclo autoregressivo di un piccolo LLM locale nel browser." />
 </head>
 <body>
-  <main class="container">
-    <header>
-      <h1>Next Token Lab</h1>
-      <p class="subtitle">
-        Un piccolo LLM gira nel tuo browser e mostra il ciclo autoregressivo:
-        prompt → tokenizzazione → token successivo → classifica delle probabilità → nuovo calcolo.
-      </p>
-      <p class="browser-alert" data-testid="browser-alert">
-        🖥️ Strumento ottimizzato per <strong>Google Chrome da computer</strong>.
-        Su smartphone/tablet il modello può non caricarsi per mancanza di memoria:
-        apri questa pagina da desktop con Chrome.
-      </p>
-    </header>
+  <a class="skip-link" href="#prompt">Vai alla domanda</a>
 
-    <section class="status-bar">
-      <span id="model-indicator">Modello: caricamento…</span>
-      <span id="backend-indicator">Backend: …</span>
-      <span id="mock-badge" class="mock-badge" data-testid="mock-badge" hidden>MOCK</span>
-    </section>
-
-    <div id="model-download" class="download-note" data-testid="model-download" hidden>
-      <span data-testid="download-progress">Download modello in corso…</span>
-      <span class="download-note-sub">il primo avvio può richiedere tempo</span>
-      <div class="download-progress-bar" data-testid="download-progress-bar" aria-hidden="true"><div></div></div>
+  <header class="topbar">
+    <div class="titles">
+      <h1>Come risponde una chatbot</h1>
+      <p class="tagline">Un modello linguistico vero, nel tuo browser: guarda come sceglie la risposta, un token alla volta.</p>
     </div>
-    <p id="mock-warning" class="mock-warning" data-testid="mock-warning" hidden>
-      ⚠️ Demo mock attiva: risultati simulati, modello reale non disponibile.
-    </p>
-    <p id="error" class="error" data-testid="error" hidden></p>
+    <div class="top-tools">
+      <span id="model-chip" class="model-chip" data-state="off" data-testid="model-chip">Modello non caricato</span>
+      <button id="btn-projector" class="ghost" type="button" aria-pressed="false" data-testid="btn-projector">Testo grande</button>
+    </div>
+  </header>
 
-    <!-- 1. PROMPT -->
-    <section class="controls">
-      <label for="prompt">Prompt</label>
-      <textarea id="prompt" data-testid="prompt" rows="3"
-        placeholder="Scrivi un prompt breve, ad esempio: Il cielo è"></textarea>
+  <div id="sim-banner" class="sim-banner" role="note" data-testid="sim-banner" hidden>
+    <strong>Simulazione per test.</strong> Questa pagina usa un modello finto (<code>?mock</code>): i punteggi non vengono da un modello linguistico vero.
+  </div>
 
-      <div class="presets" data-testid="presets">
-        <span class="presets-label">Esempi:</span>
-        <button type="button" class="preset" data-prompt="Il cielo è">Il cielo è</button>
-        <button type="button" class="preset" data-prompt="Roma è la capitale">Roma è la capitale</button>
-        <button type="button" class="preset" data-prompt="C'era una volta una piccola">C'era una volta…</button>
+  <main>
+    <!-- Preparazione del modello -->
+    <section id="setup" class="card setup" aria-labelledby="setup-title" data-testid="setup">
+      <h2 id="setup-title">Prima di iniziare: prepara il modello</h2>
+      <p>Il modello linguistico viene scaricato una sola volta e poi gira <strong>su questo computer</strong>, con la scheda grafica (WebGPU). Le domande che scrivi non vengono inviate a nessun server.</p>
+      <fieldset class="model-choice" id="model-choice" data-testid="model-choice">
+        <legend class="visually-hidden">Modello</legend>
+      </fieldset>
+      <p id="setup-note" class="note" data-testid="setup-note"></p>
+      <div class="setup-actions">
+        <button id="btn-load" class="primary" type="button" data-testid="btn-load" disabled>Verifica del browser…</button>
       </div>
-
-      <div class="buttons">
-        <button id="btn-next" data-testid="btn-next" class="primary" disabled>
-          Calcola il primo token
-        </button>
-        <button id="btn-reset" data-testid="btn-reset" class="secondary" type="button">
-          Reset
-        </button>
-        <button id="btn-mock" data-testid="btn-mock" class="secondary" type="button" hidden>
-          Avvia demo mock
-        </button>
+      <div id="load-progress" class="load-progress" data-testid="load-progress" hidden>
+        <progress id="load-bar" max="1" value="0"></progress>
+        <p id="load-text" class="note"></p>
       </div>
+      <p id="setup-error" class="error" role="alert" data-testid="setup-error" hidden></p>
+    </section>
 
-      <p id="prompt-hint" class="hint" data-testid="prompt-hint" hidden>
-        Il contesto precedente è stato annullato.
-        Calcola il primo token per ripartire.
-      </p>
-      <p id="params-hint" class="hint" data-testid="params-hint" hidden>
-        Parametro modificato: il nuovo valore sarà applicato al prossimo calcolo.
-      </p>
-
-      <div id="params-panel" class="params params-open" data-testid="params-panel">
-        <div class="param-block">
-          <label for="param-temperature">
-            <span class="param-label">Temperatura <output id="param-temperature-value" data-testid="param-temperature-value">0,8</output></span>
-          </label>
-          <input id="param-temperature" data-testid="param-temperature" type="range" min="0.1" max="2" step="0.1" value="0.8" />
-          <small class="param-microcopy">Più bassa = più prevedibile · Più alta = più varia</small>
-          <small class="param-explain">Controlla quanto la scelta resta vicina al token più probabile.</small>
+    <!-- Domanda e comandi -->
+    <section class="card ask" aria-labelledby="ask-label">
+      <label id="ask-label" for="prompt" class="ask-label">La tua domanda</label>
+      <div class="ask-row">
+        <textarea id="prompt" data-testid="prompt" rows="2" maxlength="240" placeholder="Per esempio: Perché il cielo è blu?" autocomplete="off" spellcheck="true"></textarea>
+        <div class="controls" role="group" aria-label="Comandi della generazione">
+          <button id="btn-primary" class="primary" type="button" data-testid="btn-primary" disabled>Avvia</button>
+          <button id="btn-auto" class="secondary" type="button" data-testid="btn-auto" hidden>Continua da solo</button>
+          <button id="btn-stop" class="secondary stop-text" type="button" data-testid="btn-stop" hidden>Ferma</button>
         </div>
-
-        <details id="advanced-panel" class="params-advanced">
-          <summary>Impostazioni avanzate</summary>
-          <div class="param-block">
-            <label for="param-topp">
-              <span class="param-label">Top-p <output id="param-topp-value" data-testid="param-topp-value">0,9</output></span>
-            </label>
-            <input id="param-topp" data-testid="param-topp" type="range" min="0.1" max="1" step="0.05" value="0.9" />
-            <small class="param-microcopy">Riduce la scelta ai token più plausibili</small>
-            <small class="param-explain">Più basso = scelta più prudente. Più alto = scelta più ampia e varia.</small>
-          </div>
-          <div class="param-block">
-            <label for="param-cachemode">Modalità calcolo
-              <select id="param-cachemode" data-testid="param-cachemode">
-                <option value="cache">KV cache</option>
-                <option value="naive">Ricalcolo completo (naive)</option>
-              </select>
-            </label>
-            <small class="param-explain">KV cache: il modello ricalcola solo i token nuovi. Naive: ricalcola tutta la sequenza.</small>
-          </div>
-        </details>
-        <p id="params-error" class="error" data-testid="params-error" hidden></p>
       </div>
-
-      <details id="explain-panel" class="params" data-testid="explain-panel">
-        <summary>Come funziona la scelta del prossimo token</summary>
-        <div class="explain-content">
-          <h3>Come viene scelto il prossimo token</h3>
-          <p>Il modello non prende sempre automaticamente il primo token in classifica. Prima assegna una probabilità ai token possibili, poi sceglie il prossimo token con un’estrazione pesata: i token più probabili hanno più possibilità di essere scelti, ma non sono gli unici che possono uscire.</p>
-          <p>In pratica, il primo token in classifica è il più favorito, ma con il campionamento non vince sempre. Se un token ha probabilità 60% e un altro 20%, il primo uscirà più spesso, ma il secondo può comunque essere selezionato.</p>
-          <p>Si può pensare al processo come a una ruota della fortuna: i token più probabili hanno fette più grandi, quelli meno probabili hanno fette più piccole. Il sistema estrae il token in base a queste proporzioni.</p>
-          <h3>Temperatura</h3>
-          <p>La temperatura modifica quanto la distribuzione delle probabilità resta concentrata sul token più probabile oppure si apre anche ad alternative meno probabili.</p>
-          <ul>
-            <li><strong>Temperatura bassa</strong>: il sistema resta vicino ai token più probabili, quindi la risposta è più prevedibile e stabile.</li>
-            <li><strong>Temperatura alta</strong>: anche token meno probabili ricevono più spazio, quindi la risposta può diventare più varia.</li>
-          </ul>
-          <p>In sintesi: la temperatura non sceglie da sola il token, ma modifica l’equilibrio delle probabilità prima della scelta.</p>
-          <h3>Top-p</h3>
-          <p>Il top-p restringe il gruppo dei token tra cui il sistema può scegliere, mantenendo solo quelli più plausibili.</p>
-          <ul>
-            <li><strong>Top-p più basso</strong>: il sistema considera un gruppo più ristretto di candidati, quindi tende a essere più prudente.</li>
-            <li><strong>Top-p più alto</strong>: il sistema lascia entrare più candidati plausibili, quindi aumenta la varietà.</li>
-          </ul>
-          <p>In sintesi: la temperatura cambia il peso relativo dei candidati; il top-p decide quanto ampia è la rosa finale dei token tra cui estrarre.</p>
+      <div class="ask-meta">
+        <div class="examples" data-testid="examples">
+          <span class="muted">Esempi:</span>
+          <button type="button" class="example">Perché il cielo è blu?</button>
+          <button type="button" class="example">Qual è la capitale d'Italia?</button>
+          <button type="button" class="example">Scrivi una frase su un gatto che dorme.</button>
+          <button type="button" class="example">Che cos'è l'intelligenza artificiale?</button>
         </div>
-      </details>
+        <div class="speed" role="radiogroup" aria-label="Velocità delle animazioni" data-testid="speed">
+          <span class="muted">Animazione:</span>
+          <label><input type="radio" name="speed" value="slow" /> lento</label>
+          <label><input type="radio" name="speed" value="normal" checked /> normale</label>
+          <label><input type="radio" name="speed" value="fast" /> veloce</label>
+        </div>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite" data-testid="status"></p>
+      <p class="shortcuts muted">Si procede un token alla volta. Tasti: <kbd>→</kbd> o <kbd>Spazio</kbd> prossimo token · <kbd>Esc</kbd> ferma</p>
+    </section>
 
-      <details id="tech-panel" class="params" data-testid="tech-panel">
-        <summary>Dettagli runtime</summary>
-        <dl class="tech-info">
-          <dt>Modello</dt><dd id="tech-model">Qwen2.5-0.5B-Instruct</dd>
-          <dt>Formato</dt><dd id="tech-dtype">ONNX quantizzato (q4)</dd>
-          <dt>Tokenizer</dt><dd id="tech-tokenizer">Qwen2 BPE</dd>
-          <dt>Vocabolario</dt><dd id="tech-vocab">151.936 token</dd>
-          <dt>Contesto massimo</dt><dd id="tech-context">32.768 token</dd>
-          <dt>Runtime</dt><dd id="tech-runtime">reale (Transformers.js) / mock deterministico</dd>
-          <dt>Backend</dt><dd id="tech-backend">WebGPU / WASM</dd>
-        </dl>
+    <!-- Impostazioni della chatbot: regole dell'applicazione, collegate alle fasi dell'anatomia -->
+    <section class="card settings" aria-labelledby="settings-title" data-testid="settings">
+      <details id="settings-panel" class="settings-panel" data-testid="settings-panel">
+        <summary class="settings-summary">
+          <span class="settings-head">
+            <span id="settings-title" class="settings-title">Impostazioni della chatbot</span>
+            <span id="settings-recap" class="settings-recap" data-testid="settings-recap"></span>
+          </span>
+          <span class="settings-open" aria-hidden="true"></span>
+        </summary>
+        <p class="settings-intro">Queste regole sono dell'<strong>applicazione</strong>, non del modello: il modello calcola sempre gli stessi punteggi. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Le modifiche valgono dal prossimo «Avvia».</p>
+        <p id="settings-note" class="settings-note" role="status" data-testid="settings-note"></p>
+        <div class="settings-grid">
+          <fieldset class="setting setting-wide" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Come viene scelto il prossimo token</legend>
+            <div class="segmented" role="radiogroup" aria-label="Regola di scelta del token">
+              <label><input type="radio" name="policy" value="greedy" checked data-testid="policy-greedy" /><span>Sempre il più probabile</span></label>
+              <label><input type="radio" name="policy" value="sample" data-testid="policy-sample" /><span>Estrazione casuale pesata</span></label>
+            </div>
+            <p id="policy-explain" class="setting-explain" data-testid="policy-explain"></p>
+            <details class="setting-more">
+              <summary>Come funziona l'estrazione: la ruota della fortuna</summary>
+              <p>Con l'estrazione, l'app non prende sempre il primo token in classifica. Il modello assegna una probabilità ai token possibili; poi l'app sceglie con un'estrazione pesata: i token più probabili hanno più possibilità di uscire, ma non sono gli unici che possono uscire.</p>
+              <p>Se un token ha probabilità 60% e un altro 20%, il primo uscirà più spesso, ma anche il secondo può essere scelto. È come una ruota della fortuna: i token più probabili hanno fette più grandi, quelli meno probabili fette più piccole, e la ruota gira.</p>
+              <p>In questa pagina, quando un'estrazione sceglie un token che non è il primo, il racconto e il grafico lo dicono esplicitamente («è solo 3° in classifica»).</p>
+            </details>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="temperature-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Temperatura <output id="temperature-out">1</output></legend>
+            <input id="temperature" type="range" min="0.1" max="2" step="0.1" value="1" aria-describedby="temperature-explain" data-testid="temperature" />
+            <div class="range-ends" aria-hidden="true"><span>più prevedibile</span><span>più varia</span></div>
+            <p id="temperature-explain" class="setting-explain">Controlla quanto la scelta resta vicina al token più probabile. <strong>Bassa</strong>: si resta vicini ai token più probabili, la risposta è più prevedibile e stabile. <strong>Alta</strong>: anche i token meno probabili ricevono spazio, la risposta può diventare più varia. La temperatura non sceglie da sola: cambia l'equilibrio delle probabilità prima dell'estrazione.</p>
+            <p class="setting-off" data-testid="temperature-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="top-p-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Top-p <output id="top-p-out">0,95</output></legend>
+            <input id="top-p" type="range" min="0.5" max="1" step="0.05" value="0.95" aria-describedby="top-p-explain" data-testid="top-p" />
+            <div class="range-ends" aria-hidden="true"><span>rosa più ristretta</span><span>rosa più ampia</span></div>
+            <p id="top-p-explain" class="setting-explain">Riduce la scelta ai token più plausibili: si tengono i candidati più probabili finché, sommati, arrivano a questa percentuale. <strong>Più basso</strong>: rosa ristretta, scelta più prudente. <strong>Più alto</strong>: rosa più ampia e varia. In sintesi: la temperatura cambia il peso dei candidati, il top-p decide quanto è ampia la rosa tra cui estrarre.</p>
+            <p class="setting-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting needs-sampling" id="seed-setting" data-stage-hint="select">
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Seme casuale</legend>
+            <input id="seed" type="number" min="0" step="1" inputmode="numeric" placeholder="vuoto = nuovo a ogni avvio" aria-describedby="seed-explain" data-testid="seed" />
+            <p id="seed-explain" class="setting-explain">Vuoto: estrazioni nuove a ogni avvio. Con un numero, le stesse estrazioni si ripetono: utile per preparare la lezione. Ordine applicato: temperatura → al massimo 64 candidati → top-p → probabilità rinormalizzate.</p>
+            <p class="setting-off">Conta solo con l'estrazione casuale.</p>
+          </fieldset>
+          <fieldset class="setting" data-stage-hint="model">
+            <legend><span class="stage-tag model">fase 4 · Modello</span>Modalità di calcolo</legend>
+            <div class="segmented" role="radiogroup" aria-label="Modalità di calcolo">
+              <label><input type="radio" name="cache-mode" value="cache" checked data-testid="cache-kv" /><span>KV cache</span></label>
+              <label><input type="radio" name="cache-mode" value="naive" data-testid="cache-naive" /><span>Ricalcolo completo</span></label>
+            </div>
+            <p class="setting-explain"><strong>KV cache</strong>: il modello ricalcola solo i token nuovi e riusa i calcoli già fatti per tutti gli altri (la sua «memoria» dei passi precedenti). <strong>Ricalcolo completo</strong> (naive): a ogni passo ricalcola l'intera sequenza da capo. Le probabilità non cambiano, salvo minuscoli arrotondamenti: cambia quanto lavoro fa il modello, che vedi nella frase «4» del racconto.</p>
+          </fieldset>
+          <fieldset class="setting" data-stage-hint="loop">
+            <legend><span class="stage-tag">↺ Ciclo</span>Lunghezza massima della risposta</legend>
+            <label class="range-label" for="max-tokens"><output id="max-tokens-out">48</output> token</label>
+            <input id="max-tokens" type="range" min="8" max="128" step="8" value="48" aria-describedby="max-tokens-explain" data-testid="max-tokens" />
+            <p id="max-tokens-explain" class="setting-explain">L'app ferma il ciclo dopo questo numero di token, anche se il modello non ha ancora scelto il token di fine. La domanda può essere lunga al massimo 240 caratteri.</p>
+          </fieldset>
+        </div>
       </details>
     </section>
 
-    <!-- 2. CONTESTO, 3. RISULTATO, 4. AZIONE -->
-    <section class="results" id="results" data-testid="results">
-      <p id="step-status" class="step-status" data-testid="step-status" hidden></p>
+    <!-- Anatomia di una chatbot: diagramma animato sugli eventi reali -->
+    <section class="anatomy" aria-labelledby="anatomy-title" data-testid="journey">
+      <h2 id="anatomy-title" class="section-title">Anatomia di una chatbot</h2>
+      <div id="anatomy" class="anatomy-stage" data-testid="anatomy"></div>
+      <div id="narration" class="narration" aria-live="polite" aria-relevant="additions text" data-testid="narration"><h3 class="nar-title">Che cosa sta succedendo</h3><ol class="nar-list"><li class="nar-item current" data-n="1" data-kind="app"><span class="nar-n" aria-hidden="true">1</span><span class="nar-text">Scrivi una domanda e premi «Avvia». Poi si procede un token alla volta.</span></li></ol></div>
+    </section>
 
-      <div id="prompt-tokens-section" data-testid="prompt-tokens-section" hidden>
-        <h2>Prompt tokenizzato</h2>
-        <div id="prompt-preview" data-testid="prompt-preview" class="token-sequence preview"></div>
-        <p id="preview-meta" class="preview-meta" data-testid="preview-meta"></p>
-        <p class="note">Nota: i token non coincidono necessariamente con le parole — possono contenere spazi (␠), parti di parole o punteggiatura.</p>
-      </div>
-
-      <section id="next-step-panel" class="next-step-panel" data-testid="next-step-panel" hidden>
-        <div class="step-label">Contesto corrente</div>
-        <h2>Input del prossimo calcolo</h2>
-        <p id="next-step-explanation" class="step-explanation" data-testid="next-step-explanation"></p>
-        <div id="next-step-context" class="token-sequence calculation-context" data-testid="next-step-context"></div>
-        <p id="next-step-natural" class="step-natural" data-testid="next-step-natural"></p>
+    <div class="workbench">
+      <!-- Input del modello -->
+      <section class="card panel" id="input-panel" aria-labelledby="input-title" data-testid="input-panel">
+        <div class="panel-head">
+          <h2 id="input-title">Cosa riceve il modello</h2>
+          <span id="ctx-count" class="count" data-testid="ctx-count"></span>
+        </div>
+        <p class="hint">Il testo diviso in <strong>token</strong>: parole intere, pezzi di parola, spazi (<span class="ws">·</span>) o segni. Ogni token è un numero nel vocabolario del modello.</p>
+        <div id="tokens" class="tokens" data-testid="tokens" aria-label="Token dell'input"></div>
+        <div class="panel-tools">
+          <label class="toggle"><input type="checkbox" id="show-ids" data-testid="show-ids" /> Mostra gli ID</label>
+          <button id="btn-full-input" class="link" type="button" aria-expanded="false" aria-controls="tokens" data-testid="btn-full-input" hidden>Mostra l'input completo</button>
+        </div>
+        <div id="full-input-note" class="note" data-testid="full-input-note" hidden></div>
       </section>
 
-      <div class="cache-status" id="cache-status" data-testid="cache-status" hidden>
-        <div>Contesto logico: <strong id="cache-logical"></strong> token</div>
-        <div>Calcolo corrente: <strong id="cache-current"></strong></div>
-        <div>KV cache: <strong id="cache-active"></strong></div>
-      </div>
-
-      <div id="step-result" data-testid="step-result" hidden>
-        <h2>Risultato dell'ultimo calcolo</h2>
-        <div class="chosen-card" data-testid="chosen-card">
-          <span class="chosen-big" id="chosen-big"></span>
-          <dl class="chosen-meta">
-            <dt>Token ID</dt><dd id="chosen-id"></dd>
-            <dt>Probabilità</dt><dd id="chosen-prob"></dd>
-            <dt>Rank</dt><dd id="chosen-rank"></dd>
-          </dl>
+      <!-- Candidati -->
+      <section class="card panel" id="cand-panel" aria-labelledby="cand-title" data-testid="cand-panel">
+        <div class="panel-head">
+          <h2 id="cand-title">Candidati per il prossimo token</h2>
+          <span id="step-label" class="count" data-testid="step-label"></span>
         </div>
+        <p id="chart-caption" class="hint" data-testid="chart-caption">Le barre mostreranno le probabilità calcolate dal modello per il prossimo token.</p>
+        <div id="chart-legend" class="chart-legend" data-testid="chart-legend" hidden>
+          <span><span class="swatch model"></span>probabilità del modello</span>
+          <span><span class="swatch policy"></span>probabilità di estrazione</span>
+        </div>
+        <div class="chart-wrap">
+          <div id="activity" class="activity" data-testid="activity" hidden><span class="pulse" aria-hidden="true"></span> Il modello sta calcolando i punteggi…</div>
+          <ol id="chart" class="chart" data-testid="chart" aria-label="Candidati e probabilità"></ol>
+        </div>
+        <p id="choice" class="choice" data-testid="choice"></p>
+        <p id="policy-line" class="hint" data-testid="policy-line"></p>
+      </section>
+    </div>
 
-        <h3 class="ranking-title">Classifica del prossimo token</h3>
-        <table class="ranking">
-          <thead>
-            <tr><th>Rank</th><th>Token</th><th>Token ID</th><th>Probabilità</th></tr>
-          </thead>
-          <tbody id="ranking-body" data-testid="ranking-body"></tbody>
-        </table>
-        <p id="params-applied" class="preview-meta" data-testid="params-applied"></p>
-
-        <details id="history-panel" class="params" data-testid="history-panel">
-          <summary>Cronologia</summary>
-          <div class="history-scroll">
-            <table class="history-table">
-              <thead>
-                <tr><th>Passo</th><th>Token</th><th>ID</th><th>Prob.</th><th>Rank</th><th>Contesto</th><th>Δ prob. step prec.</th></tr>
-              </thead>
-              <tbody id="history-body" data-testid="history-body"></tbody>
-            </table>
-          </div>
-          <div class="buttons">
-            <button id="btn-export" data-testid="btn-export" class="secondary" type="button">
-              Esporta cronologia (JSON)
-            </button>
-          </div>
-        </details>
+    <!-- Risposta -->
+    <section class="card answer-card" aria-labelledby="answer-title" data-testid="answer-card">
+      <div class="panel-head">
+        <h2 id="answer-title">Risposta</h2>
+        <span id="mode-badge" class="badge" data-testid="mode-badge" hidden></span>
       </div>
-
-      <div class="step-actions bottom-cta">
-        <button id="btn-next-bottom" data-testid="btn-next-bottom" class="primary next-step-button" type="button" disabled>
-          Calcola il primo token
-        </button>
+      <p id="answer" class="answer" data-testid="answer"></p>
+      <p id="finish-note" class="note" data-testid="finish-note"></p>
+      <details id="history" class="history" data-testid="history">
+        <summary>Cronologia dei token <span id="history-count" class="count" data-testid="history-count"></span></summary>
+        <div class="history-scroll">
+          <table class="history-table">
+            <thead>
+              <tr><th scope="col">#</th><th scope="col">Token</th><th scope="col">ID</th><th scope="col">Probabilità</th><th scope="col">In classifica</th><th scope="col">Scelto da</th><th scope="col">Token calcolati</th><th scope="col">Tempo</th></tr>
+            </thead>
+            <tbody id="history-body" data-testid="history-body"></tbody>
+          </table>
+        </div>
+      </details>
+      <div class="after-actions">
+        <button id="btn-replay" class="secondary" type="button" data-testid="btn-replay" hidden>Rivedi la registrazione</button>
+        <button id="btn-export" class="link" type="button" data-testid="btn-export" hidden>Scarica la registrazione (JSON)</button>
       </div>
-
-      <p id="eos-message" class="context-message eos-message" data-testid="eos-message" hidden>
-        Il modello ha prodotto EOS: la generazione è terminata.
-      </p>
     </section>
+
+    <!-- Approfondimenti -->
+    <section class="learn" aria-labelledby="learn-title">
+      <h2 id="learn-title">Per capire meglio</h2>
+      <details>
+        <summary>Chatbot e modello non sono la stessa cosa</summary>
+        <p>Il <strong>modello linguistico</strong> fa una cosa sola: riceve una sequenza di numeri (i token) e restituisce un punteggio per ogni token del suo vocabolario.</p>
+        <p>La <strong>chatbot</strong> è l'applicazione intorno al modello: prepara l'input (qui aggiunge un'istruzione e i marcatori dei ruoli, visibili in «Mostra l'input completo»), usa il tokenizer, trasforma i punteggi in probabilità, sceglie un token con una regola, lo riconverte in testo e ripete.</p>
+        <p>Questa pagina <strong>non</strong> fa ricerche sul web, non ricorda le domande precedenti e non usa altri strumenti: ogni risposta dipende solo dal tuo testo, dall'istruzione mostrata e dal modello. Le chatbot commerciali possono aggiungere queste funzioni, ma sono parti dell'applicazione, non del modello.</p>
+      </details>
+      <details>
+        <summary>Un'analogia: la stanza cinese</summary>
+        <p>Nel 1980 il filosofo John Searle immaginò una persona chiusa in una stanza: riceve fogli con simboli cinesi, segue un manuale di regole e restituisce altri simboli. Da fuori le risposte sembrano scritte da chi conosce il cinese, ma la persona non lo capisce.</p>
+        <p>Il riquadro 4 è disegnato come una «stanza» per ricordare che da fuori vediamo solo numeri che entrano e punteggi che escono.</p>
+        <p><strong>Attenzione:</strong> è un'analogia filosofica per discutere che cosa voglia dire «capire». Non descrive come funziona un modello al suo interno (una rete neurale, non un manuale di regole) e non dimostra né che il modello capisce né che non capisce. Questa pagina non mostra nulla dell'interno del modello: solo ciò che entra e ciò che esce.</p>
+      </details>
+      <details>
+        <summary>Che cosa significano le percentuali</summary>
+        <p>A ogni passo il modello produce un punteggio (logit) per ciascun token del vocabolario. L'app li trasforma in probabilità con la funzione <em>softmax</em>: valori tra 0 e 1 che, su tutto il vocabolario, sommano a 100%.</p>
+        <p>Il grafico mostra i candidati più probabili e, in fondo, la somma di <em>tutti gli altri</em> token: per questo le barre visibili non arrivano da sole a 100%. I valori sono arrotondati.</p>
+        <p>Sono probabilità del prossimo <strong>token</strong>, non della prossima parola: un token può essere una parola intera, un pezzo di parola, uno spazio, un segno o un simbolo di controllo. Le probabilità di token diversi non vengono sommate in «probabilità di parole».</p>
+        <p>Regola predefinita: si sceglie sempre il token più probabile (decodifica <em>greedy</em>), quindi la stessa domanda dà la stessa risposta. Nelle opzioni avanzate puoi passare all'estrazione casuale pesata: la scelta segue le probabilità e può cadere anche su un token meno probabile.</p>
+        <p>I valori sono calcolati in quel momento dal modello indicato in alto, sulla tua domanda: non sono esempi preparati.</p>
+      </details>
+      <details>
+        <summary>Privacy, download e memoria</summary>
+        <p>I file del modello vengono scaricati da Hugging Face e salvati nella memoria del browser (Cache Storage), così la volta successiva non serve riscaricarli. Domande e risposte restano su questo computer: tutti i calcoli avvengono qui, con WebGPU.</p>
+        <p id="privacy-sizes"></p>
+        <p>Puoi eliminare i file scaricati dalle opzioni avanzate.</p>
+      </details>
+    </section>
+
+    <!-- Dettagli tecnici -->
+    <details id="advanced" class="card advanced" data-testid="advanced">
+      <summary>Dettagli tecnici</summary>
+      <div class="adv-grid">
+        <fieldset>
+          <legend>Modello</legend>
+          <dl id="tech" class="tech" data-testid="tech"></dl>
+          <div class="adv-actions">
+            <button id="btn-change-model" class="secondary" type="button" data-testid="btn-change-model">Cambia modello</button>
+            <button id="btn-delete-model" class="link danger" type="button" data-testid="btn-delete-model">Elimina i file del modello da questo browser</button>
+          </div>
+          <p id="adv-note" class="note" role="status"></p>
+        </fieldset>
+        <fieldset>
+          <legend>Ultimo passo</legend>
+          <dl id="last-step" class="tech" data-testid="last-step"></dl>
+          <p class="note"><a href="./diagnostics.html">Pagina di diagnostica</a>: misure e verifiche tecniche su questo dispositivo.</p>
+        </fieldset>
+      </div>
+    </details>
   </main>
 
-  <script type="module" src="./app.js"></script>
+  <footer class="footer">
+    <p>Tutto il calcolo avviene nel browser con <a href="https://huggingface.co/docs/transformers.js">Transformers.js</a> e WebGPU. Modelli: Gemma 4 E2B (Google DeepMind, Apache-2.0), Qwen3 0.6B (Qwen, Alibaba Cloud, Apache-2.0), Gemma 3 270M (Google DeepMind, Gemma Terms of Use), SmolLM2 135M (Hugging Face, Apache-2.0); conversioni ONNX di onnx-community.</p>
+  </footer>
+
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -26,6 +26,11 @@ jobs:
       - name: Unit test
         run: npm run test:unit
 
+      - name: Tokenizer reali (rete)
+        run: npx vitest run tests/unit/real.test.js
+        env:
+          RUN_TOKENIZER_TESTS: '1'
+
       - name: Installa browser Playwright
         run: npx playwright install --with-deps chromium
 
