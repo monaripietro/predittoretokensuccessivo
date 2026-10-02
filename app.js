@@ -77,17 +77,24 @@ function showMockUi(show) {
 
 const committedPromptId = { value: null };
 
+const DEFAULT_PARAMS = { mode: 'sample', temperature: 0.8, topP: 0.9, topN: 5 };
+
+function formatValue(value) {
+  return Number(value).toFixed(2).replace('.', ',').replace(/,?0+$/, '');
+}
+
 function readParams() {
-  const get = (id) => ui(id).value;
+  const temperature = parseFloat(ui('param-temperature').value);
+  const topP = parseFloat(ui('param-topp').value);
   return {
-    mode: get('param-mode'),
-    temperature: parseFloat(get('param-temperature')),
-    topK: parseInt(get('param-topk'), 10),
-    topP: parseFloat(get('param-topp')),
-    minP: parseFloat(get('param-minp')),
-    repeatPenalty: parseFloat(get('param-repeat')),
-    seed: parseInt(get('param-seed'), 10),
-    topN: parseInt(get('param-topn'), 10),
+    mode: DEFAULT_PARAMS.mode,
+    temperature: Number.isFinite(temperature) ? temperature : DEFAULT_PARAMS.temperature,
+    topK: 0,
+    topP: Number.isFinite(topP) ? topP : DEFAULT_PARAMS.topP,
+    minP: 0,
+    repeatPenalty: 1.0,
+    seed: 42,
+    topN: DEFAULT_PARAMS.topN,
   };
 }
 
@@ -419,8 +426,7 @@ function applyStepResult(step, values) {
   ui('params-hint').hidden = true;
   const p = { ...values };
   ui('params-applied').textContent =
-    `Parametri applicati: temperatura ${p.temperature} · top-k ${p.topK} · top-p ${p.topP} · min-p ${p.minP} · repeat penalty ${p.repeatPenalty}`
-    + (p.mode === 'sample' ? ` · sample (seed ${p.seed})` : ' · greedy');
+    `Parametri applicati: temperatura ${formatValue(p.temperature)} · top-p ${formatValue(p.topP)}`;
   state.animateNext = true;
   renderCacheStatus(step.newTokens);
 }
@@ -576,7 +582,7 @@ function init() {
       // runtime non ancora pronto
     }
   });
-  document.querySelectorAll('.params input, .params select').forEach((el) => {
+  document.querySelectorAll('.param-block input, .param-block select').forEach((el) => {
     const onParamChange = () => {
       if (state.stepIndex > 0) {
         ui('params-hint').hidden = false;
@@ -584,6 +590,12 @@ function init() {
     };
     el.addEventListener('change', onParamChange);
     el.addEventListener('input', onParamChange);
+  });
+  ui('param-temperature').addEventListener('input', (e) => {
+    ui('param-temperature-value').textContent = formatValue(e.target.value);
+  });
+  ui('param-topp').addEventListener('input', (e) => {
+    ui('param-topp-value').textContent = formatValue(e.target.value);
   });
   ui('param-cachemode').addEventListener('change', (e) => {
     const nextMode = e.target.value;

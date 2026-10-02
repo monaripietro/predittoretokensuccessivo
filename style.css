@@ -183,6 +183,21 @@ button.secondary { background: var(--surface); color: var(--text); }
 
 .params-grid small { display: block; color: var(--muted); font-size: 0.75rem; line-height: 1.3; margin-top: 0.15rem; }
 
+.params-open { padding: 0.75rem; }
+.param-block { margin-bottom: 0.9rem; }
+.param-block:last-child { margin-bottom: 0; }
+.param-label { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; }
+.param-label output { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent-strong); }
+.param-block input[type="range"] { width: 100%; margin: 0.4rem 0 0.25rem; accent-color: var(--accent); background: transparent; border: none; padding: 0; }
+.param-microcopy { display: block; color: var(--accent-strong); font-size: 0.78rem; margin-top: 0.15rem; }
+.param-explain { display: block; color: var(--muted); font-size: 0.78rem; line-height: 1.35; margin-top: 0.1rem; }
+.params-advanced { margin-top: 0.5rem; border-top: 1px dashed var(--border); padding-top: 0.4rem; }
+.params-advanced summary { cursor: pointer; color: var(--muted); }
+.params-advanced .param-block { padding-top: 0.5rem; }
+.explain-content { padding-top: 0.75rem; font-size: 0.9rem; line-height: 1.5; }
+.explain-content h3 { margin: 0.9rem 0 0.3rem; font-size: 1rem; }
+.explain-content h3:first-child { margin-top: 0; }
+.explain-content ul { margin: 0.3rem 0; padding-left: 1.3rem; }
 .params input, .params select {
   width: 100%;
   background: var(--bg);

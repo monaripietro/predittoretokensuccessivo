@@ -71,46 +71,61 @@
         Parametro modificato: il nuovo valore sarà applicato al prossimo calcolo.
       </p>
 
-      <details id="params-panel" class="params" data-testid="params-panel">
-        <summary>Opzioni di generazione</summary>
-        <div class="params-grid">
-          <label>Modalità
-            <select id="param-mode" data-testid="param-mode">
-              <option value="greedy">Greedy</option>
-              <option value="sample">Sample</option>
-            </select>
-            <small>Greedy sceglie sempre il candidato più probabile; Sample estrae a sorte dalla distribuzione.</small>
+      <div id="params-panel" class="params params-open" data-testid="params-panel">
+        <div class="param-block">
+          <label for="param-temperature">
+            <span class="param-label">Temperatura <output id="param-temperature-value" data-testid="param-temperature-value">0,8</output></span>
           </label>
-          <label>Temperatura <input id="param-temperature" type="number" min="0.1" max="5" step="0.1" value="1.0" />
-            <small>Modifica la concentrazione della distribuzione: bassa = più deterministica, alta = più varia.</small>
-          </label>
-          <label>Top-k <input id="param-topk" type="number" min="0" max="1000" step="1" value="0" />
-            <small>Mantiene al massimo k candidati. 0 = disattivato.</small>
-          </label>
-          <label>Top-p <input id="param-topp" type="number" min="0" max="1" step="0.01" value="1.0" />
-            <small>Mantiene i candidati fino alla probabilità cumulativa indicata. 1.0 = disattivato.</small>
-          </label>
-          <label>Min-p <input id="param-minp" type="number" min="0" max="1" step="0.01" value="0" />
-            <small>Elimina i token troppo lontani dal candidato principale. 0 = disattivato.</small>
-          </label>
-          <label>Repeat penalty <input id="param-repeat" type="number" min="1" max="2" step="0.05" value="1.0" />
-            <small>Riduce la probabilità dei token già usati nel contesto.</small>
-          </label>
-          <label>Seed <input id="param-seed" type="number" step="1" value="42" />
-            <small>Seed del campionamento deterministico (solo modalità Sample).</small>
-          </label>
-          <label>Top-N <input id="param-topn" type="number" min="1" max="20" step="1" value="5" />
-            <small>Numero di candidati mostrati nella classifica.</small>
-          </label>
-          <label>Modalità calcolo
-            <select id="param-cachemode" data-testid="param-cachemode">
-              <option value="cache">KV cache</option>
-              <option value="naive">Ricalcolo completo (naive)</option>
-            </select>
-            <small>KV cache: il modello ricalcola solo i token nuovi. Naive: ricalcola tutta la sequenza.</small>
-          </label>
+          <input id="param-temperature" data-testid="param-temperature" type="range" min="0.1" max="2" step="0.1" value="0.8" />
+          <small class="param-microcopy">Più bassa = più prevedibile · Più alta = più varia</small>
+          <small class="param-explain">Controlla quanto la scelta resta vicina al token più probabile.</small>
         </div>
+
+        <details id="advanced-panel" class="params-advanced">
+          <summary>Impostazioni avanzate</summary>
+          <div class="param-block">
+            <label for="param-topp">
+              <span class="param-label">Top-p <output id="param-topp-value" data-testid="param-topp-value">0,9</output></span>
+            </label>
+            <input id="param-topp" data-testid="param-topp" type="range" min="0.1" max="1" step="0.05" value="0.9" />
+            <small class="param-microcopy">Riduce la scelta ai token più plausibili</small>
+            <small class="param-explain">Più basso = scelta più prudente. Più alto = scelta più ampia e varia.</small>
+          </div>
+          <div class="param-block">
+            <label for="param-cachemode">Modalità calcolo
+              <select id="param-cachemode" data-testid="param-cachemode">
+                <option value="cache">KV cache</option>
+                <option value="naive">Ricalcolo completo (naive)</option>
+              </select>
+            </label>
+            <small class="param-explain">KV cache: il modello ricalcola solo i token nuovi. Naive: ricalcola tutta la sequenza.</small>
+          </div>
+        </details>
         <p id="params-error" class="error" data-testid="params-error" hidden></p>
+      </div>
+
+      <details id="explain-panel" class="params" data-testid="explain-panel">
+        <summary>Come funziona la scelta del prossimo token</summary>
+        <div class="explain-content">
+          <h3>Come viene scelto il prossimo token</h3>
+          <p>Il modello non prende sempre automaticamente il primo token in classifica. Prima assegna una probabilità ai token possibili, poi sceglie il prossimo token con un’estrazione pesata: i token più probabili hanno più possibilità di essere scelti, ma non sono gli unici che possono uscire.</p>
+          <p>In pratica, il primo token in classifica è il più favorito, ma con il campionamento non vince sempre. Se un token ha probabilità 60% e un altro 20%, il primo uscirà più spesso, ma il secondo può comunque essere selezionato.</p>
+          <p>Si può pensare al processo come a una ruota della fortuna: i token più probabili hanno fette più grandi, quelli meno probabili hanno fette più piccole. Il sistema estrae il token in base a queste proporzioni.</p>
+          <h3>Temperatura</h3>
+          <p>La temperatura modifica quanto la distribuzione delle probabilità resta concentrata sul token più probabile oppure si apre anche ad alternative meno probabili.</p>
+          <ul>
+            <li><strong>Temperatura bassa</strong>: il sistema resta vicino ai token più probabili, quindi la risposta è più prevedibile e stabile.</li>
+            <li><strong>Temperatura alta</strong>: anche token meno probabili ricevono più spazio, quindi la risposta può diventare più varia.</li>
+          </ul>
+          <p>In sintesi: la temperatura non sceglie da sola il token, ma modifica l’equilibrio delle probabilità prima della scelta.</p>
+          <h3>Top-p</h3>
+          <p>Il top-p restringe il gruppo dei token tra cui il sistema può scegliere, mantenendo solo quelli più plausibili.</p>
+          <ul>
+            <li><strong>Top-p più basso</strong>: il sistema considera un gruppo più ristretto di candidati, quindi tende a essere più prudente.</li>
+            <li><strong>Top-p più alto</strong>: il sistema lascia entrare più candidati plausibili, quindi aumenta la varietà.</li>
+          </ul>
+          <p>In sintesi: la temperatura cambia il peso relativo dei candidati; il top-p decide quanto ampia è la rosa finale dei token tra cui estrarre.</p>
+        </div>
       </details>
 
       <details id="tech-panel" class="params" data-testid="tech-panel">

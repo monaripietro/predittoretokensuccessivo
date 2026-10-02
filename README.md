@@ -120,7 +120,7 @@ La scelta è automatica: WebGPU → Qwen2.5-0.5B; altrimenti SmolLM2-360M in WAS
 - **Browser consigliato**: Google Chrome da computer. Su smartphone/tablet il runtime può superare la memoria disponibile e il caricamento del modello non è garantito: il sito mostra un avviso esplicito in testa alla pagina.
 - **Chrome Android**: non supportato come target. In passato il runtime selezionava automaticamente SmolLM2-135M su dispositivi mobile; questa ottimizzazione è stata rimossa su richiesta del proprietario: la selezione del modello dipende solo dal backend (WebGPU/WASM), non dal tipo di dispositivo.
 - **Prompt lunghi**: nessun limite artificiale oltre il contesto del modello caricato; prestazioni WebGPU/WASM variano per browser e dispositivo.
-- **Parametri**: temperatura, top-k, top-p, min-p, repeat penalty e seed sono applicati ai logits nel codice dell'app, quindi funzionanti anche col runtime reale.
+- **Parametri**: la UI espone solo **temperatura** (slider sempre visibile) e **top-p** (slider in *Impostazioni avanzate*), con default `temperature = 0.8`, `topP = 0.9`, `topN = 5`, `mode = sample` sempre campionamento pesato. Greedy/sample, top-k, min-p, seed e repeat penalty non sono esposti all'utente: sono fissati internamente nel codice dell'app. La sezione *Come funziona la scelta del prossimo token* spiega campionamento, temperatura e top-p in linguaggio non tecnico.
 
 ## Checklist di rilascio (dominio pubblico)
 
@@ -140,7 +140,7 @@ La scelta è automatica: WebGPU → Qwen2.5-0.5B; altrimenti SmolLM2-360M in WAS
 2. Inserire un prompt breve (es. `Il cielo è`).
 3. Premere `Calcola token successivo` almeno tre volte.
 4. Verificare a ogni passo: token e ID visibili (hover/focus sui chip), ranking con percentuali, token scelto evidenziato, contatore di contesto incrementato.
-5. Cambiare un parametro nel pannello Opzioni e ripetere un click.
+5. Muovere lo slider della temperatura (o top-p nelle impostazioni avanzate) e ripetere un click.
 6. Passare da KV cache a ricalcolo completo e ripetere un click.
 7. Controllare la console del browser: nessun errore di mixed content o runtime.
 
