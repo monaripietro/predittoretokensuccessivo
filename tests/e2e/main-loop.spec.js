@@ -138,7 +138,6 @@ test.describe('Ciclo principale (mock)', () => {
   test('cambio parametro: nota che sarà applicato al prossimo calcolo', async ({ page }) => {
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('btn-next').click();
-    await page.locator('#params-panel summary').click();
     await page.locator('#param-temperature').fill('0.5');
     await expect(page.getByTestId('params-hint')).toBeVisible();
     await expect(page.getByTestId('params-hint')).toContainText('applicato al prossimo calcolo');
@@ -147,7 +146,7 @@ test.describe('Ciclo principale (mock)', () => {
   });
 
   test('modalità naive e cache: stesso contesto logico, testo diverso', async ({ page }) => {
-    await page.locator('#params-panel summary').click();
+    await page.locator('#advanced-panel summary').click();
     await page.getByTestId('prompt').fill('a b c');
     await page.getByTestId('param-cachemode').selectOption('naive');
     await page.getByTestId('btn-next').click();
