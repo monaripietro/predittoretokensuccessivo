@@ -161,7 +161,8 @@
 }
 .an-chip-id { font-family: var(--mono, ui-monospace, Consolas, monospace); }
 /* nascosto ma con lo spazio riservato */
-.an-chip[hidden] { display: block; visibility: hidden; }
+/* [hidden] è display:none !important in style.css: lo spazio del chip si riserva sul nodo */
+.an-node:has(> .an-chip[hidden]) { padding-bottom: calc(16px + 42px); }
 
 /* ---------- bolle prompt / risposta (ellisse lime) ---------- */
 
@@ -539,11 +540,13 @@
 
 @media (min-width: 1240px) {
   .an-grid {
-    grid-template-columns: minmax(210px, 1.1fr) minmax(104px, .5fr) minmax(300px, 1.8fr) minmax(170px, .8fr) minmax(210px, 1.1fr);
+    grid-template-columns: minmax(230px, 1.25fr) minmax(96px, .45fr) minmax(280px, 1.45fr) minmax(160px, .75fr) minmax(230px, 1.25fr);
     align-items: center;
     gap: 40px 32px;
   }
-  .an-app { align-self: stretch; justify-content: center; }
+  .an-app { align-self: stretch; justify-content: center; padding: 40px 16px 26px; }
+  .an-app .an-node { padding-left: 12px; padding-right: 12px; }
+  .an-app .an-title, .an-app .an-node-small .an-title { font-size: 17.5px; }
   .an-lane-in .an-lane-cards { flex-direction: column; flex-wrap: nowrap; align-items: center; height: calc(var(--id-h) * 5 + 40px); }
   .an-lane-head { flex-direction: column; gap: 4px; }
   .an-loop { grid-column: 1 / -1; min-height: 56px; }
