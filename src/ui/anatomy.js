@@ -564,9 +564,11 @@ export function createAnatomy(container, {
       refs['in-cards'].append(ghost);
       ghost.style.visibility = 'hidden';
       const dst = ghost;
+      // Layout a righe/colonna: si passa dal margine sinistro, senza attraversare le schede.
+      const gx = rel(start).w / 2 + 6;
       const via = wide
         ? [point(rel(start).cx, loop.cy), point(laneIn.cx, loop.cy)]
-        : [point(rel(start).cx, loop.cy)];
+        : [point(rel(start).cx, loop.cy), point(gx, loop.cy), point(gx, laneIn.cy)];
       fly(start, dst, { duration: flyDuration(duration, 0.85), via, scale: 1 });
       ghost.remove();
       await pause(flyDuration(duration, 0.85) * 0.95, signal);
