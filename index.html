@@ -85,7 +85,7 @@
           </span>
           <span class="settings-open" aria-hidden="true"></span>
         </summary>
-        <p class="settings-intro">Queste regole sono dell'<strong>applicazione</strong>, non del modello: il modello calcola sempre gli stessi punteggi. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Le modifiche valgono dal prossimo «Avvia».</p>
+        <p class="settings-intro">Queste regole sono dell'<strong>applicazione</strong>, non del modello: il modello calcola sempre gli stessi punteggi. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Regola di scelta, temperatura, top-p e modalità di calcolo si applicano dal token successivo; gli altri valori dal prossimo «Avvia».</p>
         <p id="settings-note" class="settings-note" role="status" data-testid="settings-note"></p>
         <div class="settings-grid">
           <fieldset class="setting setting-wide" data-stage-hint="select">
@@ -103,15 +103,15 @@
             </details>
           </fieldset>
           <fieldset class="setting needs-sampling" id="temperature-setting" data-stage-hint="select">
-            <legend><span class="stage-tag">fase 5 · Scelta</span>Temperatura <output id="temperature-out">1</output></legend>
-            <input id="temperature" type="range" min="0.1" max="2" step="0.1" value="1" aria-describedby="temperature-explain" data-testid="temperature" />
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Temperatura <output id="temperature-out">0,8</output></legend>
+            <input id="temperature" type="range" min="0.1" max="2" step="0.1" value="0.8" aria-describedby="temperature-explain" data-testid="temperature" />
             <div class="range-ends" aria-hidden="true"><span>più prevedibile</span><span>più varia</span></div>
             <p id="temperature-explain" class="setting-explain">Controlla quanto la scelta resta vicina al token più probabile. <strong>Bassa</strong>: si resta vicini ai token più probabili, la risposta è più prevedibile e stabile. <strong>Alta</strong>: anche i token meno probabili ricevono spazio, la risposta può diventare più varia. La temperatura non sceglie da sola: cambia l'equilibrio delle probabilità prima dell'estrazione.</p>
             <p class="setting-off" data-testid="temperature-off">Conta solo con l'estrazione casuale.</p>
           </fieldset>
           <fieldset class="setting needs-sampling" id="top-p-setting" data-stage-hint="select">
-            <legend><span class="stage-tag">fase 5 · Scelta</span>Top-p <output id="top-p-out">0,95</output></legend>
-            <input id="top-p" type="range" min="0.5" max="1" step="0.05" value="0.95" aria-describedby="top-p-explain" data-testid="top-p" />
+            <legend><span class="stage-tag">fase 5 · Scelta</span>Top-p <output id="top-p-out">0,9</output></legend>
+            <input id="top-p" type="range" min="0.1" max="1" step="0.05" value="0.9" aria-describedby="top-p-explain" data-testid="top-p" />
             <div class="range-ends" aria-hidden="true"><span>rosa più ristretta</span><span>rosa più ampia</span></div>
             <p id="top-p-explain" class="setting-explain">Riduce la scelta ai token più plausibili: si tengono i candidati più probabili finché, sommati, arrivano a questa percentuale. <strong>Più basso</strong>: rosa ristretta, scelta più prudente. <strong>Più alto</strong>: rosa più ampia e varia. In sintesi: la temperatura cambia il peso dei candidati, il top-p decide quanto è ampia la rosa tra cui estrarre.</p>
             <p class="setting-off">Conta solo con l'estrazione casuale.</p>

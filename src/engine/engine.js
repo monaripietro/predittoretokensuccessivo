@@ -221,6 +221,27 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     });
   }
 
+  function updateSettings({ sessionId, policy, cacheMode } = {}) {
+    return serial(async () => {
+      requireModel();
+      if (!session || session.id !== sessionId) {
+        throw new EngineError('no-session', 'Nessuna generazione attiva.');
+      }
+      const s = session;
+      if (policy !== undefined) {
+        const nextPolicy = validatePolicy(policy);
+        if (nextPolicy.kind === 'sample' && !s.random) s.random = mulberry32(s.seed);
+        s.policy = nextPolicy;
+      }
+      if (cacheMode !== undefined) s.cacheMode = cacheMode === 'naive' ? 'naive' : 'cache';
+      return {
+        policy: s.policy,
+        cacheMode: s.cacheMode,
+        seed: s.policy.kind === 'sample' ? s.seed : null,
+      };
+    });
+  }
+
   function step({ sessionId, keepRawCopy = false } = {}) {
     return serial(async () => {
       requireModel();
@@ -400,6 +421,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     warmup,
     tokenize,
     begin,
+    updateSettings,
     step,
     override,
     end,

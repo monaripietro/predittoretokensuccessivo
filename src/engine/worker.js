@@ -50,6 +50,9 @@ const handlers = {
   async begin(payload) {
     return requireEngine().begin(payload);
   },
+  async updateSettings(payload) {
+    return requireEngine().updateSettings(payload);
+  },
   async step(payload) {
     return requireEngine().step(payload);
   },

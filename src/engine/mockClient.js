@@ -18,6 +18,7 @@ export function createMockClient({ delayMs = 40, modelOptions = {} } = {}) {
     warmup: () => engine.warmup(),
     tokenize: (p) => engine.tokenize(p),
     begin: (p) => engine.begin(p),
+    updateSettings: (p) => engine.updateSettings(p),
     step: (p) => engine.step(p),
     override: (p) => engine.override(p),
     end: () => engine.end(),

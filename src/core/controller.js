@@ -42,6 +42,7 @@ export function createController({
   let busy = false;
   let stopRequested = false;
   let replayIndex = 0;
+  let pendingSettings = null;
   const signal = { aborted: false };
 
   /** Segnala quando un calcolo o una presentazione inizia/finisce (es. per abilitare «Un token»). */
@@ -69,6 +70,22 @@ export function createController({
     }
     setState(STATES.DONE);
     onEvent({ type: 'finish', reason, error, trace });
+  }
+
+  async function updateSettings(settings) {
+    if (![STATES.STARTING, STATES.RUNNING, STATES.PAUSED].includes(state)) return false;
+    if (!sessionId) {
+      pendingSettings = settings;
+      return true;
+    }
+    try {
+      const applied = await client.call('updateSettings', { sessionId, ...settings });
+      if (trace && trace.seed === null && applied.policy?.kind === 'sample') trace.seed = applied.seed;
+      return true;
+    } catch (err) {
+      onEvent({ type: 'error', error: err });
+      return false;
+    }
   }
 
   /** Un passo reale del modello. Restituisce false se la generazione è finita. */
@@ -126,6 +143,7 @@ export function createController({
   }) {
     if (busy || ![STATES.IDLE, STATES.DONE].includes(state)) return false;
     stopRequested = false;
+    pendingSettings = null;
     signal.aborted = false;
     setState(STATES.STARTING);
     let begun;
@@ -151,6 +169,11 @@ export function createController({
       steps: [],
       finish: null,
     };
+    if (pendingSettings) {
+      const settings = pendingSettings;
+      pendingSettings = null;
+      await updateSettings(settings);
+    }
     onEvent({ type: 'begin', trace, replay: false });
     setBusy(true);
     setState(autoplay ? STATES.RUNNING : STATES.PAUSED);
@@ -282,6 +305,7 @@ export function createController({
   async function reset() {
     if (sessionId) await client.call('end').catch(() => null);
     sessionId = null;
+    pendingSettings = null;
     trace = null;
     setBusy(false);
     setState(STATES.IDLE);
@@ -292,6 +316,7 @@ export function createController({
     pause,
     resume,
     next,
+    updateSettings,
     choose,
     stop,
     replay,

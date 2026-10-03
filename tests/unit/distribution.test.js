@@ -143,7 +143,11 @@ describe('campionamento', () => {
   it('valida i parametri', () => {
     expect(() => validatePolicy({ kind: 'beam' })).toThrow();
     expect(() => validatePolicy({ kind: 'sample', temperature: 0 })).toThrow();
+    expect(() => validatePolicy({ kind: 'sample', temperature: 0.09 })).toThrow();
     expect(() => validatePolicy({ kind: 'sample', topP: 0 })).toThrow();
+    expect(() => validatePolicy({ kind: 'sample', topP: 0.09 })).toThrow();
+    expect(validatePolicy({ kind: 'sample', temperature: 0.1, topP: 0.1, topK: 1 }))
+      .toMatchObject({ temperature: 0.1, topP: 0.1, topK: 1 });
     expect(validatePolicy({ kind: 'greedy', temperature: 9 })).toEqual({ kind: 'greedy' });
   });
 });

@@ -394,16 +394,63 @@ test.describe('impostazioni della chatbot', () => {
 
   test('riepilogo sempre visibile; temperatura e top-p inattive con la regola «il più probabile»', async ({ page }) => {
     await expect(page.getByTestId('settings-recap')).toHaveText('Scelta: sempre il più probabile · Calcolo: KV cache · Max 48 token');
+    await expect(page.getByTestId('temperature')).toHaveAttribute('min', '0.1');
+    await expect(page.getByTestId('temperature')).toHaveAttribute('max', '2');
+    await expect(page.getByTestId('temperature')).toHaveAttribute('step', '0.1');
+    await expect(page.getByTestId('temperature')).toHaveValue('0.8');
+    await expect(page.getByTestId('top-p')).toHaveAttribute('min', '0.1');
+    await expect(page.getByTestId('top-p')).toHaveAttribute('max', '1');
+    await expect(page.getByTestId('top-p')).toHaveAttribute('step', '0.05');
+    await expect(page.getByTestId('top-p')).toHaveValue('0.9');
     await page.locator('#settings-panel > summary').click();
     await expect(page.getByTestId('temperature')).toBeDisabled();
     await expect(page.getByTestId('temperature-off')).toBeVisible();
     await page.getByTestId('policy-sample').check();
     await expect(page.getByTestId('temperature')).toBeEnabled();
-    await expect(page.getByTestId('settings-recap')).toContainText('estrazione (temperatura 1, top-p 0,95)');
+    await expect(page.getByTestId('settings-recap')).toContainText('estrazione (temperatura 0,8, top-p 0,9)');
     await expect(page.getByTestId('policy-explain')).toContainText('a sorte');
     // passando sopra un'impostazione si evidenzia la fase dell'anatomia
     await page.locator('#temperature-setting').hover();
     await expect(page.locator('#anatomy [data-stage="select"].setting-hint').first()).toBeVisible();
+  });
+
+  test('temperatura e top-p aggiornati durante la pausa valgono dal token successivo', async ({ page }) => {
+    await page.locator('#settings-panel > summary').click();
+    await page.getByTestId('policy-sample').check();
+    await setSpeed(page, 'fast');
+    await start(page, 'Perché il cielo è blu?');
+
+    await page.getByTestId('btn-primary').click();
+    await page.waitForFunction(() => window.__nextTokenDemo.trace.steps.length === 1);
+    await page.getByTestId('temperature').fill('1.4');
+    await page.getByTestId('top-p').fill('0.4');
+    await expect(page.getByTestId('settings-note')).toContainText('dal prossimo token');
+    await page.getByTestId('btn-primary').click();
+    await page.waitForFunction(() => window.__nextTokenDemo.trace.steps.length === 2);
+
+    const policies = await demo(page, () => window.__nextTokenDemo.trace.steps.map((step) => step.policy));
+    expect(policies[0]).toMatchObject({ kind: 'sample', temperature: 0.8, topP: 0.9 });
+    expect(policies[1]).toMatchObject({ kind: 'sample', temperature: 1.4, topP: 0.4 });
+  });
+
+  test('il cambio a ricalcolo completo si applica al passo successivo e la scheda lo nomina correttamente', async ({ page }) => {
+    await page.locator('#settings-panel > summary').click();
+    await setSpeed(page, 'fast');
+    await start(page, 'Perché il cielo è blu?');
+
+    await page.getByTestId('btn-primary').click();
+    await page.waitForFunction(() => window.__nextTokenDemo.trace.steps.length === 1);
+    await page.getByTestId('cache-naive').check();
+    await page.getByTestId('btn-primary').click();
+    await page.waitForFunction(() => window.__nextTokenDemo.trace.steps.length === 2);
+
+    const second = await demo(page, () => window.__nextTokenDemo.trace.steps[1]);
+    expect(second.cacheMode).toBe('naive');
+    expect(second.cachedTokens).toBe(0);
+    expect(second.processedTokens).toBe(second.contextLength);
+    await expect(page.locator('#last-step')).toContainText('ricalcolati da capo');
+    await expect(page.locator('#last-step')).toContainText('senza KV cache');
+    await expect(page.locator('#last-step')).not.toContainText('già in memoria (KV cache)');
   });
 
   test('ricalcolo completo: a ogni passo il modello rielabora tutta la sequenza, e lo dice', async ({ page }) => {

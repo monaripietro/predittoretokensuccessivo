@@ -243,4 +243,32 @@ describe('motore: KV cache contro ricalcolo completo', () => {
     // in modalità ricalcolo ogni cache creata viene subito liberata
     expect(naive.caches.every((c) => c.disposed)).toBe(true);
   });
+
+  it('applica campionamento e modalità di calcolo aggiornati tra i passi', async () => {
+    const { engine } = await setup();
+    const b = await engine.begin({ text: 'Perché il cielo è blu?', policy: { kind: 'greedy' } });
+    const first = await engine.step({ sessionId: b.sessionId });
+    expect(first.cacheMode).toBe('cache');
+
+    await engine.updateSettings({
+      sessionId: b.sessionId,
+      policy: { kind: 'sample', temperature: 1.4, topP: 0.4, topK: 64 },
+      cacheMode: 'naive',
+    });
+    const second = await engine.step({ sessionId: b.sessionId });
+    expect(second.policy).toMatchObject({ kind: 'sample', temperature: 1.4, topP: 0.4 });
+    expect(second.selected.draw).toBeGreaterThanOrEqual(0);
+    expect(second.cacheMode).toBe('naive');
+    expect(second.cachedTokens).toBe(0);
+    expect(second.processedTokens).toBe(b.input.ids.length + 1);
+
+    await engine.updateSettings({ sessionId: b.sessionId, cacheMode: 'cache' });
+    const third = await engine.step({ sessionId: b.sessionId });
+    expect(third.cacheMode).toBe('cache');
+    expect(third.cachedTokens).toBe(0);
+    expect(third.processedTokens).toBe(b.input.ids.length + 2);
+    const fourth = await engine.step({ sessionId: b.sessionId });
+    expect(fourth.cachedTokens).toBe(b.input.ids.length + 2);
+    expect(fourth.processedTokens).toBe(1);
+  });
 });

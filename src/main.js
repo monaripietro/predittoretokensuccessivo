@@ -513,8 +513,17 @@ function updateSettingsUi() {
     `Max ${$('max-tokens').value} token`,
   ];
   $('settings-recap').textContent = parts.join(' · ');
-  const running = controller.state !== STATES.IDLE && controller.state !== STATES.DONE;
-  $('settings-note').textContent = running ? 'Generazione in corso: le modifiche varranno dal prossimo «Avvia».' : '';
+  const running = [STATES.STARTING, STATES.RUNNING, STATES.PAUSED].includes(controller.state);
+  $('settings-note').textContent = running
+    ? 'Generazione in corso: regola di scelta, temperatura, top-p e modalità di calcolo valgono dal prossimo token; lunghezza e seme dal prossimo «Avvia».'
+    : '';
+}
+
+function handleSettingsChange() {
+  updateSettingsUi();
+  if ([STATES.STARTING, STATES.RUNNING, STATES.PAUSED].includes(controller.state)) {
+    void controller.updateSettings({ policy: readPolicy(), cacheMode: readCacheMode() });
+  }
 }
 
 /** Passando sopra un'impostazione si evidenzia la fase dell'anatomia in cui agisce. */
@@ -712,9 +721,12 @@ function renderLastStep(step) {
     renderTech();
   }
   const s = step.selected;
+  const processed = step.cacheMode === 'naive'
+    ? `${formatNumber(step.processedTokens)} ricalcolati da capo (senza KV cache)`
+    : `${formatNumber(step.processedTokens)} nuovi + ${formatNumber(step.cachedTokens)} già in memoria (KV cache)`;
   fillDl($('last-step'), [
     ['Token n.', step.index + 1],
-    ['Token elaborati', `${step.processedTokens} nuovi + ${step.cachedTokens} già in memoria (KV cache)`],
+    ['Token elaborati', processed],
     ['Tempo del passo', app.view.replay ? 'registrato' : `${step.timing.stepMs} ms (di cui probabilità: ${step.timing.decideMs} ms)`],
     ['Scelto', `ID ${s.id}, posizione ${s.rank} in classifica`],
     ['Logit del primo candidato', step.candidates[0]?.logit?.toFixed(3)],
@@ -958,10 +970,11 @@ function wireUi() {
     projector.setAttribute('aria-pressed', String(on));
     storageSet('projector', on ? '1' : '0');
   });
-  document.querySelectorAll('input[name="policy"], input[name="cache-mode"], #temperature, #top-p, #max-tokens')
-    .forEach((i) => i.addEventListener('input', updateSettingsUi));
   document.querySelectorAll('input[name="policy"], input[name="cache-mode"]')
-    .forEach((i) => i.addEventListener('change', updateSettingsUi));
+    .forEach((i) => i.addEventListener('change', handleSettingsChange));
+  document.querySelectorAll('#temperature, #top-p')
+    .forEach((i) => i.addEventListener('input', handleSettingsChange));
+  $('max-tokens').addEventListener('input', updateSettingsUi);
   const panel = $('settings-panel');
   if (storageGet('settings-open') === '1') panel.open = true;
   panel.addEventListener('toggle', () => storageSet('settings-open', panel.open ? '1' : '0'));

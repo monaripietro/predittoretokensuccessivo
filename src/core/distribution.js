@@ -27,11 +27,11 @@ export function validatePolicy(policy = DEFAULT_POLICY) {
   const temperature = Number(policy.temperature ?? 1);
   const topP = Number(policy.topP ?? 1);
   const topK = Number(policy.topK ?? SAMPLING_TOP_K);
-  if (!Number.isFinite(temperature) || temperature < 0.05 || temperature > 2) {
-    throw new Error('La temperatura deve essere tra 0,05 e 2.');
+  if (!Number.isFinite(temperature) || temperature < 0.1 || temperature > 2) {
+    throw new Error('La temperatura deve essere tra 0,1 e 2.');
   }
-  if (!Number.isFinite(topP) || topP <= 0 || topP > 1) {
-    throw new Error('Top-p deve essere maggiore di 0 e al massimo 1.');
+  if (!Number.isFinite(topP) || topP < 0.1 || topP > 1) {
+    throw new Error('Top-p deve essere tra 0,1 e 1.');
   }
   if (!Number.isInteger(topK) || topK < 1 || topK > 1000) {
     throw new Error('Top-k deve essere un intero tra 1 e 1000.');
