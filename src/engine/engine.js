@@ -40,6 +40,13 @@ function normalizeSystemPrompt(value) {
   return prompt;
 }
 
+function randomSeed() {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new EngineError('random-seed-unavailable', 'Impossibile generare un seme casuale sicuro.');
+  }
+  return globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+}
+
 /**
  * @param {object} tf modulo Transformers.js (o un sostituto con la stessa API)
  * @param {object} [options]
@@ -233,7 +240,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         throw new EngineError('invalid-max-new-tokens', 'Il limite di token generati deve essere un numero.');
       }
       const n = Math.max(1, Math.min(LIMITS.maxNewTokens, Math.floor(requestedMaxNewTokens)));
-      const s = Number.isInteger(seed) ? seed >>> 0 : (Math.random() * 2 ** 32) >>> 0;
+      const s = Number.isInteger(seed) ? seed >>> 0 : randomSeed();
       session = {
         id: `${Date.now().toString(36)}-${s.toString(36)}`,
         ids: input.ids.slice(),
