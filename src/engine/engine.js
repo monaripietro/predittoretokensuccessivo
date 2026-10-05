@@ -47,6 +47,19 @@ function randomSeed() {
   return globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
 }
 
+function contextLimit(model, spec) {
+  const config = model?.config;
+  const configured = [
+    config?.text_config?.max_position_embeddings,
+    config?.max_position_embeddings,
+    config?.max_sequence_length,
+  ].find((n) => Number.isSafeInteger(n) && n > 0);
+  const fallback = Number.isSafeInteger(spec.maxContextTokens) && spec.maxContextTokens > 0
+    ? spec.maxContextTokens
+    : LIMITS.maxInputTokens + 2048;
+  return configured ?? fallback;
+}
+
 /**
  * @param {object} tf modulo Transformers.js (o un sostituto con la stessa API)
  * @param {object} [options]
@@ -129,6 +142,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       label: spec.label,
       dtype,
       device,
+      maxContextTokens: contextLimit(model, spec),
       chatTemplateOptions: spec.chatTemplateOptions ?? {},
       thinking,
       eosIds,
@@ -157,7 +171,11 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
   }
 
   /** Costruisce l'input esatto inviato al modello (modello di chat incluso). */
-  function buildInput(text, { systemPrompt: requestedSystemPrompt = SYSTEM_PROMPT, thinking: requestedThinking } = {}) {
+  function buildInput(text, {
+    systemPrompt: requestedSystemPrompt = SYSTEM_PROMPT,
+    thinking: requestedThinking,
+    generationBudget,
+  } = {}) {
     requireModel();
     const userText = String(text ?? '').trim();
     if (!userText) throw new EngineError('empty-prompt', 'Scrivi una domanda o una frase.');
@@ -171,8 +189,12 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       thinking = typeof requestedThinking === 'boolean' ? requestedThinking : info.thinking.default;
       chatTemplateOptions[info.thinking.parameter] = thinking;
     }
+    const generationBudgetInstruction = Number.isSafeInteger(generationBudget) && generationBudget > 0
+      ? `Concludi entro ${generationBudget} token generati, ragionamento incluso.`
+      : null;
+    const systemContent = [systemPrompt, generationBudgetInstruction].filter(Boolean).join('\n');
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: systemContent },
       { role: 'user', content: userText },
     ];
     const fullText = tokenizer.apply_chat_template(messages, {
@@ -186,12 +208,24 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     const userStart = fullText.indexOf(userText, sysStart >= 0 ? sysStart + systemPrompt.length : 0);
     const spans = [];
     if (sysStart >= 0) spans.push({ start: sysStart, end: sysStart + systemPrompt.length, origin: 'system' });
+    const budgetStart = generationBudgetInstruction
+      ? fullText.indexOf(generationBudgetInstruction, sysStart >= 0 ? sysStart + systemPrompt.length : 0)
+      : -1;
+    if (budgetStart >= 0) {
+      spans.push({
+        start: budgetStart,
+        end: budgetStart + generationBudgetInstruction.length,
+        origin: 'system',
+      });
+    }
     if (userStart >= 0) spans.push({ start: userStart, end: userStart + userText.length, origin: 'user' });
     const labelled = labelOrigins(pieces, spans);
     const reconstructed = pieces.map((p) => p.text).join('');
     return {
       userText,
       systemPrompt,
+      generationBudget,
+      generationBudgetInstruction,
       thinking,
       fullText,
       ids,
@@ -200,7 +234,8 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         groupIndex: p.groupIndex, special: p.special, fragment: p.fragment, origin: p.origin,
       })),
       piecesExact: reconstructed === fullText,
-      tooLong: ids.length > LIMITS.maxInputTokens,
+      tooLong: ids.length > LIMITS.maxInputTokens
+        + (generationBudgetInstruction ? LIMITS.maxGenerationBudgetPromptTokens : 0),
     };
   }
 
@@ -230,8 +265,8 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     return serial(async () => {
       requireModel();
       await disposeSession();
-      const input = buildInput(text, { systemPrompt, thinking });
-      if (input.tooLong) {
+      const baseInput = buildInput(text, { systemPrompt, thinking });
+      if (baseInput.tooLong) {
         throw new EngineError('input-too-long', `L'input supera ${LIMITS.maxInputTokens} token: accorcia il testo.`);
       }
       const p = validatePolicy(policy);
@@ -239,7 +274,31 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       if (!Number.isFinite(requestedMaxNewTokens)) {
         throw new EngineError('invalid-max-new-tokens', 'Il limite di token generati deve essere un numero.');
       }
-      const n = Math.max(1, Math.min(LIMITS.maxNewTokens, Math.floor(requestedMaxNewTokens)));
+      const requestedLimit = Math.max(1, Math.floor(requestedMaxNewTokens));
+      let input = baseInput;
+      let n = Math.min(requestedLimit, info.maxContextTokens - baseInput.ids.length);
+      let remainingContext;
+      while (true) {
+        input = buildInput(text, { systemPrompt, thinking, generationBudget: n });
+        if (input.tooLong) {
+          throw new EngineError(
+            'input-too-long',
+            `L'input completo supera ${LIMITS.maxInputTokens + LIMITS.maxGenerationBudgetPromptTokens} token: accorcia il testo.`,
+          );
+        }
+        remainingContext = info.maxContextTokens - input.ids.length;
+        if (remainingContext >= n || n === 1) break;
+        n = Math.max(1, Math.min(n - 1, remainingContext));
+      }
+      if (remainingContext < 1) {
+        throw new EngineError(
+          'input-too-long',
+          `L'input usa tutti i ${info.maxContextTokens} token disponibili per questo modello: accorcialo per lasciare spazio alla risposta.`,
+        );
+      }
+      const limitReason = n < requestedLimit || input.ids.length + n >= info.maxContextTokens
+        ? 'context'
+        : 'setting';
       const s = Number.isInteger(seed) ? seed >>> 0 : randomSeed();
       session = {
         id: `${Date.now().toString(36)}-${s.toString(36)}`,
@@ -262,6 +321,9 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         policy: p,
         seed: p.kind === 'sample' ? s : null,
         maxNewTokens: n,
+        requestedMaxNewTokens: requestedLimit,
+        maxContextTokens: info.maxContextTokens,
+        limitReason,
         cacheMode: session.cacheMode,
       };
     });

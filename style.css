@@ -540,6 +540,26 @@ textarea:focus { outline: none; border-color: var(--brand); background: var(--su
   background: transparent;
   cursor: pointer;
 }
+.thinking-token-group {
+  flex: 1 0 100%;
+  min-width: 0;
+  border: 1px dashed var(--card-line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.thinking-token-group > summary {
+  min-height: auto;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  color: var(--brand-strong);
+}
+.thinking-token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: flex-start;
+  padding: 0.45rem;
+}
 
 /* ---------- Grafico dei candidati ---------- */
 
@@ -707,6 +727,29 @@ textarea:focus { outline: none; border-color: var(--brand); background: var(--su
   white-space: nowrap;
 }
 .answer.placeholder { color: var(--muted); font-size: 1.1rem; font-style: italic; }
+.thinking-output {
+  margin: 0.75rem 0;
+  border: 1px solid var(--card-line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.thinking-output > summary {
+  padding: 0.55rem 0.8rem;
+  font-size: 0.88rem;
+  color: var(--brand-strong);
+}
+.thinking-output[open] > summary { border-bottom: 1px solid var(--line); }
+.answer.thinking-answer {
+  min-height: 0;
+  max-height: min(24rem, 50vh);
+  margin: 0;
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
 .badge {
   font-size: 0.75rem;
   font-weight: 800;

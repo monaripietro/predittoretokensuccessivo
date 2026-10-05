@@ -147,6 +147,7 @@ export class FakeCache {
 export class FakeModel {
   constructor(tokenizer, options = {}) {
     this.tokenizer = tokenizer;
+    this.config = options.config ?? { max_position_embeddings: options.maxContextTokens ?? 4096 };
     this.generation_config = { eos_token_id: [1, 4] };
     this.options = options;
     this.forwardCalls = 0;
@@ -245,6 +246,7 @@ export const MOCK_SPEC = Object.freeze({
   label: 'Modello simulato (solo per test)',
   id: 'mock/simulated',
   revision: 'mock',
+  maxContextTokens: 4096,
   baseFiles: {},
   variants: { mock: { requiresF16: false, files: {} } },
   chatTemplateOptions: {},

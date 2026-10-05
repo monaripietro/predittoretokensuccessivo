@@ -118,7 +118,8 @@ Deploy automatico tramite workflow su push in `main`: `npm ci && npm run build`,
 - **WebGPU obbligatorio**: senza scheda grafica il modello non viene eseguito né scaricato; non esiste fallback su CPU.
 - **Gemma 4 E2B su macchine con poca memoria**: il caricamento può fallire o mandare in crash il tab su macchine con 8 GB; per questo esiste il suggerimento del modello leggero. Un crash di Gemma su questa classe di macchine è un esito atteso da documentare, non un difetto.
 - **Qualità linguistica**: un modello da ~1B/0.6B parametri commette errori; l'obiettivo è osservare il processo, non produrre testo di qualità.
-- **Contesto**: prompt fino a 240 caratteri, risposta fino a 2048 token generati (inclusi eventuali token di ragionamento), 8 candidati mostrati per passo.
+- **Contesto**: il limite configurabile vale per l'intera sessione e include eventuali token di ragionamento. L'app aggiunge al prompt di sistema una richiesta non vincolante di concludere entro il budget; il limite effettivo è applicato localmente in base allo spazio residuo del modello dopo la tokenizzazione dell'intero input. Il prompt è limitato a 240 caratteri.
+- **Limite del runtime**: non esiste un singolo parametro equivalente a `max_tokens` di Chat Completions in questo flusso locale. Per mostrare punteggi e scelta un token alla volta, ogni chiamata Transformers.js usa `max_new_tokens: 1`; il budget totale è quindi una richiesta nel prompt più un limite di sicurezza della sessione, non un vincolo globale garantito dal modello.
 - **Campionamento**: al massimo 64 candidati ammessi all'estrazione; l'ordine dei filtri è temperatura → 64 candidati → top-p → rinormalizzazione.
 
 ## Smoke test manuale

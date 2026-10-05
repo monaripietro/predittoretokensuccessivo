@@ -394,6 +394,7 @@ test.describe('impostazioni della chatbot', () => {
 
   test('riepilogo sempre visibile; temperatura e top-p inattive con la regola «il più probabile»', async ({ page }) => {
     await expect(page.getByTestId('settings-recap')).toHaveText('Scelta: sempre il più probabile · Calcolo: KV cache · Max 48 token');
+    await expect(page.getByTestId('max-tokens')).toHaveAttribute('max', '3840');
     await page.locator('#settings-panel > summary').click();
     await expect(page.getByTestId('temperature')).toBeDisabled();
     await expect(page.getByTestId('temperature-off')).toBeVisible();

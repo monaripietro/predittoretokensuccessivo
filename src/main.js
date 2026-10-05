@@ -21,9 +21,11 @@ import {
 } from './ui/dom.js';
 import { createAnatomy } from './ui/anatomy.js';
 import { tokenChip } from './ui/tokenView.js';
-import { REPLACEMENT } from './core/tokens.js';
 import { renderChart } from './ui/chart.js';
 import { createNarration } from './ui/narration.js';
+import {
+  appendThinkingAwareOutput, flushThinkingOutput, groupGeneratedTokens, thinkingStateFromPrompt,
+} from './ui/thinking.js';
 import {
   policyLabel, chartCaption, choiceSentence, finishLabel, formatNumber, quoteToken,
 } from './ui/labels.js';
@@ -123,12 +125,28 @@ function setStage(name) {
 /* ------------------------------------------------------------------ */
 
 function resetView(trace) {
+  const initialThinking = thinkingStateFromPrompt(trace?.input, trace?.thinking ?? trace?.input?.thinking);
   app.view = {
     historyRows: [],
     input: trace?.input ?? null,
     generated: [],
     answerParts: [],
+    thinkingParts: [],
     answerText: '',
+    thinkingOpen: initialThinking.thinkingOpen,
+    hasThinking: initialThinking.hasThinking,
+    pendingChannel: initialThinking.pendingChannel,
+    channelBuffer: '',
+    channelOwners: [],
+    channelEntries: [],
+    markerBuffer: '',
+    markerOwners: [],
+    tokenThinking: false,
+    tokenStepsToMark: [],
+    tokenStepsToUnmark: [],
+    lastThinkingFlagChanges: [],
+    pendingBytes: false,
+    pendingBytesThinking: false,
     answerSnaps: [],
     replay: false,
   };
@@ -144,6 +162,9 @@ function tokenLabel(selected) {
 
 function renderTokens({ animateLast = false } = {}) {
   const box = $('tokens');
+  const openThinkingRuns = new Set(
+    [...box.querySelectorAll('.thinking-token-group[open]')].map((group) => group.dataset.startIndex),
+  );
   clear(box);
   const v = app.view;
   if (!v?.input) {
@@ -180,9 +201,33 @@ function renderTokens({ animateLast = false } = {}) {
     }
     flushRun();
   }
-  v.generated.forEach((g, i) => {
-    box.append(tokenChip(g, { extraClass: animateLast && i === v.generated.length - 1 ? 'just-added' : '' }));
-  });
+  const appendGeneratedChip = (token, i) => box.append(tokenChip(token, {
+    extraClass: animateLast && i === v.generated.length - 1 ? 'just-added' : '',
+  }));
+  let generatedIndex = 0;
+  for (const group of groupGeneratedTokens(v.generated)) {
+    if (group.thinking) {
+      const groupTokens = group.tokens;
+      const chips = el('div', { class: 'thinking-token-list' });
+      groupTokens.forEach((token) => {
+        chips.append(tokenChip(token, {
+          extraClass: animateLast && generatedIndex === v.generated.length - 1 ? 'just-added' : '',
+        }));
+        generatedIndex += 1;
+      });
+      const group = el('details', {
+        class: 'thinking-token-group',
+        dataset: { testid: 'thinking-token-group', startIndex: String(generatedIndex - groupTokens.length) },
+      },
+      el('summary', { class: 'tok summary' }, `Ragionamento · ${groupTokens.length} token`),
+      chips);
+      group.open = openThinkingRuns.has(group.dataset.startIndex);
+      box.append(group);
+    } else {
+      const token = group.tokens[0];
+      appendGeneratedChip(token, generatedIndex++);
+    }
+  }
   box.scrollTop = box.scrollHeight;
   $('ctx-count').textContent = `${formatNumber(tokens.length)} token di input · ${formatNumber(v.generated.length)} generati`;
   const btn = $('btn-full-input');
@@ -218,7 +263,25 @@ function addGeneratedToken(step) {
     pending: Boolean(p.fragment),
     empty: Boolean(p.empty),
     origin: 'generated',
+    thinking: app.view.tokenThinking,
   });
+  const flagChanges = new Map();
+  for (const index of app.view.tokenStepsToMark) {
+    if (app.view.generated[index]) {
+      if (!flagChanges.has(index)) flagChanges.set(index, app.view.generated[index].thinking);
+      app.view.generated[index].thinking = true;
+    }
+  }
+  for (const index of app.view.tokenStepsToUnmark) {
+    if (app.view.generated[index]) {
+      if (!flagChanges.has(index)) flagChanges.set(index, app.view.generated[index].thinking);
+      app.view.generated[index].thinking = false;
+    }
+  }
+  app.view.lastThinkingFlagChanges = [...flagChanges.entries()];
+  app.view.tokenStepsToMark = [];
+  app.view.tokenStepsToUnmark = [];
+  app.view.tokenThinking = false;
   // Un gruppo di frammenti di byte si è chiuso: si aggiornano le sue tessere.
   for (const piece of step.completedPieces ?? []) {
     if (piece.groupSize > 1) {
@@ -236,13 +299,27 @@ function addGeneratedToken(step) {
 function renderAnswer() {
   const box = $('answer');
   clear(box);
-  const parts = app.view?.answerParts ?? [];
+  const v = app.view;
+  const parts = v?.answerParts ?? [];
   if (parts.length === 0) {
     box.classList.add('placeholder');
     box.textContent = 'La risposta comparirà qui, un token alla volta.';
-    return;
+  } else {
+    box.classList.remove('placeholder');
+    renderOutputParts(box, parts, v.pendingBytes && !v.pendingBytesThinking);
   }
-  box.classList.remove('placeholder');
+
+  const thinking = $('thinking-output');
+  const thinkingBox = $('thinking-answer');
+  clear(thinkingBox);
+  thinking.hidden = !v?.hasThinking;
+  if (!v?.hasThinking) thinking.open = false;
+  if (v?.hasThinking) {
+    renderOutputParts(thinkingBox, v.thinkingParts, v.pendingBytes && v.pendingBytesThinking);
+  }
+}
+
+function renderOutputParts(box, parts, pendingBytes = false) {
   parts.forEach((p, i) => {
     const last = i === parts.length - 1;
     if (p.control) {
@@ -254,31 +331,13 @@ function renderAnswer() {
       box.append(p.text);
     }
   });
-  if (app.view.pendingBytes) {
+  if (pendingBytes) {
     box.append(el('span', { class: 'end-token', title: 'carattere incompleto: il token scelto contiene solo una parte dei suoi byte' }, 'byte…'));
   }
 }
 
 function appendAnswer(step) {
-  const v = app.view;
-  if (step.selected.special) {
-    v.answerParts.push({ control: true, eos: step.selected.isEos, text: step.selected.piece?.text ?? '' });
-  } else {
-    // Un carattere di più byte non ancora completo produce U+FFFD in coda:
-    // non lo si mostra come testo, si segnala che mancano dei byte.
-    const decoded = step.answerText ?? '';
-    let next = decoded;
-    while (next.endsWith(REPLACEMENT)) next = next.slice(0, -1);
-    v.pendingBytes = next.length !== decoded.length;
-    if (next.startsWith(v.answerText)) {
-      const delta = next.slice(v.answerText.length);
-      if (delta) v.answerParts.push({ text: delta });
-    } else {
-      v.answerParts = v.answerParts.filter((p) => p.control);
-      v.answerParts.push({ text: next });
-    }
-    v.answerText = next;
-  }
+  appendThinkingAwareOutput(app.view, step);
   renderAnswer();
 }
 
@@ -328,8 +387,13 @@ async function introduce(trace, { replay, signal }) {
   setStage('assemble');
   const systemPrompt = trace.input.systemPrompt ?? app.info?.systemPrompt ?? '';
   narrate('2', systemPrompt
-    ? `L'app aggiunge un'istruzione («${systemPrompt}») e i marcatori della chat. Puoi vederli con «Mostra l'input completo».`
-    : "L'app non aggiunge un'istruzione di sistema, ma solo i marcatori della chat. Puoi vederli con «Mostra l'input completo».");
+    ? `L'app aggiunge un'istruzione («${systemPrompt}»).`
+    : "L'app non aggiunge un'istruzione di sistema personalizzata.");
+  if (trace.input.generationBudget) {
+    narrate('2', ` Chiede anche al modello di concludere entro ${formatNumber(trace.input.generationBudget)} token generati, ragionamento compreso; l'app verifica comunque questo limite. Puoi vedere l'input completo con «Mostra l'input completo».`);
+  } else {
+    narrate('2', " L'app aggiunge i marcatori della chat. Puoi vedere l'input completo con «Mostra l'input completo».");
+  }
   await anatomy.assemble({ appTokenCount: tokens.length - userCount, systemPrompt }, { duration: t.intro, signal });
   setStage('tokenize');
   renderTokens();
@@ -354,8 +418,25 @@ async function present(step, { replay, signal, override = false }) {
     const snap = v.answerSnaps.pop();
     if (snap) {
       v.answerParts = snap.parts.map((p) => ({ ...p }));
+      v.thinkingParts = snap.thinkingParts.map((p) => ({ ...p }));
+      for (const [index, thinking] of v.lastThinkingFlagChanges) {
+        if (v.generated[index]) v.generated[index].thinking = thinking;
+      }
+      v.lastThinkingFlagChanges = [];
       v.answerText = snap.text;
+      v.thinkingOpen = snap.thinkingOpen;
+      v.hasThinking = snap.hasThinking;
+      v.pendingChannel = snap.pendingChannel;
+      v.channelBuffer = snap.channelBuffer;
+      v.channelOwners = snap.channelOwners.slice();
+      v.channelEntries = snap.channelEntries.map((entry) => ({ ...entry }));
+      v.markerBuffer = snap.markerBuffer;
+      v.markerOwners = snap.markerOwners.slice();
+      v.tokenThinking = snap.tokenThinking;
+      v.tokenStepsToMark = snap.tokenStepsToMark.slice();
+      v.tokenStepsToUnmark = snap.tokenStepsToUnmark.slice();
       v.pendingBytes = snap.pendingBytes;
+      v.pendingBytesThinking = snap.pendingBytesThinking;
       renderAnswer();
     }
     v.generated.pop();
@@ -396,7 +477,24 @@ async function present(step, { replay, signal, override = false }) {
   setStage('decode');
   const p = s.piece ?? {};
   $('choice').append(' ', el('span', { class: 'decode' }, `ID ${s.id} → ${p.special ? p.text : JSON.stringify(p.text ?? '')}`));
-  v.answerSnaps.push({ parts: v.answerParts.map((x) => ({ ...x })), text: v.answerText, pendingBytes: v.pendingBytes });
+  v.answerSnaps.push({
+    parts: v.answerParts.map((x) => ({ ...x })),
+    thinkingParts: v.thinkingParts.map((x) => ({ ...x })),
+    text: v.answerText,
+    thinkingOpen: v.thinkingOpen,
+    hasThinking: v.hasThinking,
+    pendingChannel: v.pendingChannel,
+    channelBuffer: v.channelBuffer,
+    channelOwners: v.channelOwners.slice(),
+    channelEntries: v.channelEntries.map((entry) => ({ ...entry })),
+    markerBuffer: v.markerBuffer,
+    markerOwners: v.markerOwners.slice(),
+    tokenThinking: v.tokenThinking,
+    tokenStepsToMark: v.tokenStepsToMark.slice(),
+    tokenStepsToUnmark: v.tokenStepsToUnmark.slice(),
+    pendingBytes: v.pendingBytes,
+    pendingBytesThinking: v.pendingBytesThinking,
+  });
   appendAnswer(step);
   if (s.special) narrate('6', `Il token di controllo (ID ${s.id}) non diventa testo visibile: chiude la risposta.`);
   else if (p.fragment) narrate('6', `L'ID ${s.id} è solo un pezzo (byte) di un carattere: il testo comparirà quando arriveranno gli altri pezzi.`);
@@ -437,11 +535,17 @@ function handleEvent(e) {
       narrate('4', `Il modello sta calcolando un punteggio per ogni token del suo vocabolario${app.info?.vocabSize ? ` (${formatNumber(app.info.vocabSize)})` : ''}…`, 'model');
       break;
     case 'finish': {
+      flushThinkingOutput(app.view);
+      renderAnswer();
       $('cand-panel').classList.remove('computing');
       $('activity').hidden = true;
       setStage(null);
       anatomy.finished(e.reason);
-      let text = finishLabel(e.reason, { maxNewTokens: e.trace?.maxNewTokens });
+      let text = finishLabel(e.reason, {
+        maxNewTokens: e.trace?.maxNewTokens,
+        maxContextTokens: e.trace?.maxContextTokens,
+        limitReason: e.trace?.limitReason,
+      });
       if (e.reason === 'error') text += ` ${e.error?.message ?? ''}`;
       if (e.trace?.discardedInFlight) text += " L'ultimo calcolo in corso è stato scartato e non è mostrato.";
       $('finish-note').textContent = text;
@@ -451,6 +555,8 @@ function handleEvent(e) {
       break;
     }
     case 'replay-end':
+      flushThinkingOutput(app.view);
+      renderAnswer();
       setStage(null);
       anatomy.finished('replay');
       $('finish-note').textContent = 'Fine del replay: hai rivisto i passi registrati, senza nuovi calcoli.';
@@ -511,6 +617,19 @@ function decimalIt(x) {
 
 /** Riepilogo, spiegazione della regola, impostazioni attive/inattive. */
 function updateSettingsUi() {
+  const maxTokens = $('max-tokens');
+  const modelContext = app.info?.maxContextTokens ?? MODELS[app.modelKey]?.maxContextTokens;
+  if (Number.isSafeInteger(modelContext) && modelContext > 0) {
+    const min = Number(maxTokens.min) || LIMITS.minNewTokens;
+    const step = Number(maxTokens.step) || 1;
+    const max = Math.max(
+      min,
+      Math.floor((modelContext - LIMITS.maxInputTokens - LIMITS.maxGenerationBudgetPromptTokens - min) / step) * step + min,
+    );
+    maxTokens.max = String(max);
+    if (Number(maxTokens.value) > max) maxTokens.value = String(max);
+    $('max-tokens-out').textContent = maxTokens.value;
+  }
   const policy = readPolicy();
   const sampling = policy.kind === 'sample';
   document.querySelectorAll('.setting.needs-sampling').forEach((f) => {
@@ -1066,6 +1185,7 @@ async function boot() {
     app.info = await app.client.call('load');
     app.status = 'ready';
     setModelChip('sim', 'Simulazione · nessun modello reale');
+    updateSettingsUi();
     renderTech();
     updateControls();
     return;

@@ -53,6 +53,9 @@ describe('etichette: fine e token', () => {
   it('distingue fine naturale, limite, stop ed errore', () => {
     expect(finishLabel('eos')).toMatch(/token di fine/);
     expect(finishLabel('length', { maxNewTokens: 48 })).toContain('48 token');
+    expect(finishLabel('length', {
+      maxNewTokens: 24, maxContextTokens: 40, limitReason: 'context',
+    })).toMatch(/contesto del modello \(40 token complessivi\).*24 token generati/);
     expect(finishLabel('stopped')).toMatch(/fermata/);
     expect(finishLabel('error')).toMatch(/errore/);
   });

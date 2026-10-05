@@ -185,11 +185,50 @@ describe('motore: fine, stop ed errori', () => {
       text: 'Ciao', policy: { kind: 'greedy' }, maxNewTokens: 129, thinking: true,
     });
     expect(begun.maxNewTokens).toBe(129);
+    expect(begun.requestedMaxNewTokens).toBe(129);
+    expect(begun.limitReason).toBe('setting');
     expect(begun.thinking).toBe(true);
+    expect(begun.input.generationBudget).toBe(129);
+    expect(begun.input.fullText).toContain(begun.input.generationBudgetInstruction);
     let event;
     for (let i = 0; i < 129; i++) event = await engine.step({ sessionId: begun.sessionId });
     expect(event.index).toBe(128);
     expect(event.finish).toBe('length');
+  });
+
+  it('limita la sessione al contesto effettivo del modello senza cambiare i passi da un token', async () => {
+    const maxContextTokens = 160;
+    const { tf, engine } = await setup({
+      config: { text_config: { max_position_embeddings: maxContextTokens } },
+    });
+    const newline = tf.created.tokenizer.byPiece.get('\n');
+    const originalLogitsFor = tf.created.model.logitsFor.bind(tf.created.model);
+    tf.created.model.logitsFor = (ids) => {
+      const logits = originalLogitsFor(ids).fill(-100);
+      logits[newline] = 10;
+      return logits;
+    };
+    const begun = await engine.begin({
+      text: 'Ciao', policy: { kind: 'greedy' }, maxNewTokens: 2048,
+    });
+    const available = begun.maxNewTokens;
+    expect(begun.maxContextTokens).toBe(maxContextTokens);
+    expect(begun.requestedMaxNewTokens).toBe(2048);
+    expect(begun.input.generationBudget).toBe(available);
+    expect(begun.input.ids.length + available).toBeLessThanOrEqual(maxContextTokens);
+    expect(begun.limitReason).toBe('context');
+
+    let event;
+    for (let i = 0; i < available; i++) event = await engine.step({ sessionId: begun.sessionId });
+    expect(event.contextLength).toBe(begun.input.ids.length + available - 1);
+    expect(event.finish).toBe('length');
+    expect(tf.created.model.forwardCalls).toBe(available);
+  });
+
+  it('rifiuta un input che lascia zero token di contesto per la risposta', async () => {
+    const { engine } = await setup({ maxContextTokens: 8 });
+    await expect(engine.begin({ text: 'Ciao', policy: { kind: 'greedy' }, maxNewTokens: 48 }))
+      .rejects.toMatchObject({ code: 'input-too-long' });
   });
 
   it('si ferma al token di fine e lo dichiara', async () => {

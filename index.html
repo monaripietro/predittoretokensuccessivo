@@ -146,8 +146,8 @@
           <fieldset class="setting" data-stage-hint="loop">
             <legend><span class="stage-tag">↺ Ciclo</span>Lunghezza massima della risposta</legend>
             <label class="range-label" for="max-tokens"><output id="max-tokens-out">48</output> token</label>
-            <input id="max-tokens" type="range" min="8" max="2048" step="8" value="48" aria-describedby="max-tokens-explain" data-testid="max-tokens" />
-            <p id="max-tokens-explain" class="setting-explain">L'app ferma il ciclo dopo questo numero di token, inclusi quelli di ragionamento, anche se il modello non ha ancora scelto il token di fine. La domanda può essere lunga al massimo 240 caratteri.</p>
+            <input id="max-tokens" type="range" min="8" max="32512" step="8" value="48" aria-describedby="max-tokens-explain" data-testid="max-tokens" />
+            <p id="max-tokens-explain" class="setting-explain">L'app chiede al modello di concludere entro questo numero di token (ragionamento incluso) e ferma il ciclo al limite se necessario. Il contesto residuo del modello può ridurre il budget effettivo. La domanda può essere lunga al massimo 240 caratteri.</p>
           </fieldset>
         </div>
       </details>
@@ -203,6 +203,10 @@
         <span id="mode-badge" class="badge" data-testid="mode-badge" hidden></span>
       </div>
       <p id="answer" class="answer" data-testid="answer"></p>
+      <details id="thinking-output" class="thinking-output" data-testid="thinking-output" hidden>
+        <summary>Ragionamento del modello</summary>
+        <p id="thinking-answer" class="answer thinking-answer" data-testid="thinking-answer"></p>
+      </details>
       <p id="finish-note" class="note" data-testid="finish-note"></p>
       <details id="history" class="history" data-testid="history">
         <summary>Cronologia dei token <span id="history-count" class="count" data-testid="history-count"></span></summary>

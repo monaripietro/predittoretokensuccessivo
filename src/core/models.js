@@ -10,6 +10,7 @@ export const SYSTEM_PROMPT = 'Rispondi in italiano, in modo breve e semplice: al
 
 const HUB = 'https://huggingface.co';
 
+// Fallback context windows; the engine prefers the loaded architecture config when available.
 export const MODELS = {
   'gemma-4-e2b': {
     key: 'gemma-4-e2b',
@@ -17,6 +18,7 @@ export const MODELS = {
     label: 'Gemma 4 E2B (instruction-tuned, solo testo)',
     id: 'onnx-community/gemma-4-E2B-it-ONNX',
     revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
+    maxContextTokens: 32768,
     license: 'Apache-2.0',
     // Caricato come ForCausalLM: Transformers.js scarica solo embed_tokens e
     // decoder_model_merged, non gli encoder di immagini e audio.
@@ -57,6 +59,7 @@ export const MODELS = {
     label: 'Qwen3 0.6B (instruct)',
     id: 'onnx-community/Qwen3-0.6B-ONNX',
     revision: 'da1453100cf3ff33ef56d17983fc7a8648706db6',
+    maxContextTokens: 32768,
     license: 'Apache-2.0',
     baseFiles: {
       'tokenizer_config.json': 9705,
@@ -79,6 +82,7 @@ export const MODELS = {
     label: 'Gemma 3 270M (instruction-tuned)',
     id: 'onnx-community/gemma-3-270m-it-ONNX',
     revision: '2dbbfdb1b59bd034eb959428c6a7da9dd7ea27f0',
+    maxContextTokens: 32768,
     license: 'Gemma Terms of Use',
     baseFiles: {
       'tokenizer_config.json': 2313,
@@ -101,6 +105,7 @@ export const MODELS = {
     label: 'SmolLM2 135M (instruct)',
     id: 'onnx-community/SmolLM2-135M-Instruct-ONNX',
     revision: 'b8a5c0f183b78c55955a5364f610c36668b5e681',
+    maxContextTokens: 8192,
     license: 'Apache-2.0',
     baseFiles: {
       'tokenizer_config.json': 3794,
@@ -128,9 +133,9 @@ export const LIMITS = Object.freeze({
   maxPromptChars: 240,
   maxSystemPromptChars: 240,
   maxInputTokens: 160,
+  maxGenerationBudgetPromptTokens: 96,
   defaultNewTokens: 48,
   minNewTokens: 8,
-  maxNewTokens: 2048,
   displayCandidates: 8,
 });
 
