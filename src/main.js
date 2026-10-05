@@ -215,14 +215,14 @@ function renderTokens({ animateLast = false } = {}) {
         }));
         generatedIndex += 1;
       });
-      const group = el('details', {
+      const groupElement = el('details', {
         class: 'thinking-token-group',
         dataset: { testid: 'thinking-token-group', startIndex: String(generatedIndex - groupTokens.length) },
       },
       el('summary', { class: 'tok summary' }, `Ragionamento · ${groupTokens.length} token`),
       chips);
-      group.open = openThinkingRuns.has(group.dataset.startIndex);
-      box.append(group);
+      groupElement.open = openThinkingRuns.has(groupElement.dataset.startIndex);
+      box.append(groupElement);
     } else {
       const token = group.tokens[0];
       appendGeneratedChip(token, generatedIndex++);
