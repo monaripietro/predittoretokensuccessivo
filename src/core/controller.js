@@ -14,6 +14,8 @@
  *   modello ed è segnalato come tale.
  */
 
+import { REPLACEMENT } from './tokens.js';
+
 export const STATES = Object.freeze({
   IDLE: 'idle',
   STARTING: 'starting',
@@ -24,6 +26,25 @@ export const STATES = Object.freeze({
   REPLAYING: 'replaying',
   REPLAY_PAUSED: 'replay-paused',
 });
+
+const ANSWER_TEXT = Symbol('answerText');
+
+export function compactTraceForExport(trace) {
+  return {
+    ...trace,
+    version: 2,
+    answerEncoding: 'delta',
+    steps: trace.steps.map((step) => {
+      const compact = {};
+      for (const key of Object.keys(step)) {
+        if (key !== 'answerText') compact[key] = step[key];
+      }
+      compact.answerDelta = step.answerDelta ?? step.answerText ?? '';
+      compact.answerReset = step.answerReset ?? true;
+      return compact;
+    }),
+  };
+}
 
 /**
  * @param {object} deps
@@ -42,7 +63,48 @@ export function createController({
   let busy = false;
   let stopRequested = false;
   let replayIndex = 0;
+  let lastAnswerText = '';
   const signal = { aborted: false };
+
+  function storedStep(step, previousStep, previousText) {
+    const { answerText = '', ...fields } = step;
+    const fullText = String(answerText ?? '');
+    const extendsPrevious = fullText.startsWith(previousText);
+    const suffixStart = extendsPrevious ? previousText.length : 0;
+    const suffix = Array.from(fullText.slice(suffixStart)).join('');
+    let previousVisibleText = previousText;
+    while (previousVisibleText.endsWith(REPLACEMENT)) {
+      previousVisibleText = previousVisibleText.slice(0, -1);
+    }
+    const extendsVisibleText = fullText.startsWith(previousVisibleText);
+    const answerDeltaStart = extendsVisibleText ? previousVisibleText.length : 0;
+    const answerDelta = answerDeltaStart === suffixStart
+      ? suffix
+      : Array.from(fullText.slice(answerDeltaStart)).join('');
+    const stored = { ...fields };
+    Object.defineProperties(stored, {
+      [ANSWER_TEXT]: {
+        value: { previousStep, extendsPrevious, suffix },
+      },
+      answerDelta: { value: answerDelta },
+      answerReset: { value: !extendsVisibleText },
+    });
+    Object.defineProperty(stored, 'answerText', {
+      enumerable: false,
+      get: () => {
+        const pieces = [];
+        let current = stored;
+        while (current) {
+          const compact = current[ANSWER_TEXT];
+          pieces.push(compact.suffix);
+          if (!compact.extendsPrevious || !compact.previousStep) break;
+          current = compact.previousStep;
+        }
+        return pieces.reverse().join('');
+      },
+    });
+    return stored;
+  }
 
   /** Segnala quando un calcolo o una presentazione inizia/finisce (es. per abilitare «Un token»). */
   function setBusy(value) {
@@ -94,7 +156,9 @@ export function createController({
       await finish('stopped');
       return false;
     }
-    trace.steps.push(ev);
+    const previousStep = trace.steps.at(-1) ?? null;
+    trace.steps.push(storedStep(ev, previousStep, lastAnswerText));
+    lastAnswerText = String(ev.answerText ?? '');
     onEvent({ type: 'computed', index, step: ev });
     await present(ev, { replay: false, signal });
     setBusy(false);
@@ -128,6 +192,7 @@ export function createController({
     if (busy || ![STATES.IDLE, STATES.DONE].includes(state)) return false;
     stopRequested = false;
     signal.aborted = false;
+    lastAnswerText = '';
     setState(STATES.STARTING);
     let begun;
     try {
@@ -149,6 +214,9 @@ export function createController({
       policy: begun.policy,
       seed: begun.seed,
       maxNewTokens: begun.maxNewTokens,
+      requestedMaxNewTokens: begun.requestedMaxNewTokens,
+      maxContextTokens: begun.maxContextTokens,
+      limitReason: begun.limitReason,
       cacheMode: begun.cacheMode ?? 'cache',
       steps: [],
       finish: null,
@@ -197,7 +265,11 @@ export function createController({
       onEvent({ type: 'error', error: err });
       return false;
     }
-    trace.steps[trace.steps.length - 1] = ev;
+    const index = trace.steps.length - 1;
+    const previousStep = trace.steps[index - 1] ?? null;
+    const previousText = previousStep?.answerText ?? '';
+    trace.steps[index] = storedStep(ev, previousStep, previousText);
+    lastAnswerText = String(ev.answerText ?? '');
     onEvent({ type: 'override', step: ev });
     await present(ev, { replay: false, signal, override: true });
     setBusy(false);

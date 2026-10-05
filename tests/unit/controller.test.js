@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createController, STATES } from '../../src/core/controller.js';
+import { compactTraceForExport, createController, STATES } from '../../src/core/controller.js';
 import { createMockClient } from '../../src/engine/mockClient.js';
 
 function deferred() {
@@ -30,6 +30,31 @@ async function setup({ present, modelOptions } = {}) {
 }
 
 const count = (client, type) => client.calls.filter((c) => c === type).length;
+
+function recordedClient(answerTexts) {
+  let index = 0;
+  return {
+    async call(type) {
+      if (type === 'begin') {
+        return {
+          sessionId: 'recorded',
+          input: {},
+          policy: { kind: 'greedy' },
+          maxNewTokens: answerTexts.length,
+        };
+      }
+      if (type === 'step') {
+        const current = index++;
+        return {
+          index: current,
+          answerText: answerTexts[current],
+          finish: current === answerTexts.length - 1 ? 'length' : null,
+        };
+      }
+      return {};
+    },
+  };
+}
 
 describe('regia: un token alla volta (predefinito)', () => {
   it("dopo l'avvio prepara l'input e aspetta: nessun passo del modello senza un comando", async () => {
@@ -77,6 +102,51 @@ describe('regia: un token alla volta (predefinito)', () => {
     await ctl.next();
     expect(presented.map((p) => p.replay)).toEqual([true, true]);
     expect(client.calls.length).toBe(calls);
+  });
+});
+
+describe('regia: memoria della traccia', () => {
+  it('mantiene compatibili answerText ed export registrando in modo compatto', async () => {
+    const ctl = createController({
+      client: recordedClient(['A', 'AB', 'ABC']),
+      present: async () => {},
+    });
+    await ctl.start({ text: 'test', policy: { kind: 'greedy' }, autoplay: true });
+    await waitFor(() => ctl.state === STATES.DONE);
+
+    expect(ctl.trace.steps.map((step) => step.answerText)).toEqual(['A', 'AB', 'ABC']);
+    expect(Object.getOwnPropertyDescriptor(ctl.trace.steps[0], 'answerText').enumerable).toBe(false);
+    const exported = JSON.parse(JSON.stringify(compactTraceForExport(ctl.trace)));
+    expect(exported.version).toBe(2);
+    expect(exported.answerEncoding).toBe('delta');
+    expect(exported.steps.map((step) => step.answerDelta)).toEqual(['A', 'B', 'C']);
+    expect(exported.steps.map((step) => step.answerReset)).toEqual([false, false, false]);
+    expect(exported.steps.every((step) => !('answerText' in step))).toBe(true);
+  });
+
+  it('non conserva una copia cumulativa answerText per ciascun passo con budget 32k', async () => {
+    const budget = 32_000;
+    const ctl = createController({
+      client: recordedClient(Array(budget).fill('x')),
+      present: async () => {},
+    });
+    await ctl.start({ text: 'test', policy: { kind: 'greedy' }, maxNewTokens: budget, autoplay: true });
+    await waitFor(() => ctl.state === STATES.DONE, 10_000);
+
+    expect(ctl.trace.steps).toHaveLength(budget);
+    expect(ctl.trace.steps.at(-1).answerText).toBe('x');
+    for (const step of ctl.trace.steps) {
+      const descriptor = Object.getOwnPropertyDescriptor(step, 'answerText');
+      expect(descriptor.get).toBeTypeOf('function');
+      expect(descriptor.enumerable).toBe(false);
+      expect(descriptor).not.toHaveProperty('value');
+      expect(Object.keys(step)).not.toContain('answerDelta');
+      expect(Object.keys(step)).not.toContain('answerReset');
+    }
+    expect(JSON.stringify(ctl.trace)).not.toContain('"answerText"');
+    const serialized = JSON.stringify(compactTraceForExport(ctl.trace));
+    expect(serialized).not.toContain('"answerText"');
+    expect(serialized).toContain('"answerDelta"');
   });
 });
 

@@ -17,7 +17,7 @@ L'app mostra tutto il percorso: la domanda, l'istruzione di sistema che l'app ag
 - **Passo per passo**: ogni clic su «Prossimo token» esegue esattamente un calcolo del modello; «Continua da solo» procede senza bloccare la pagina (l'inferenza gira in un Web Worker).
 - **Classifica dei candidati**: grafico con gli 8 candidati più probabili, le loro percentuali e la massa residua («altri N token»). Le barre visibili non sommano al 100% perché il vocabolario è molto più grande.
 - **Sostituzione del token**: in pausa si può cliccare un candidato diverso per forzare la scelta del passo; il modello prosegue da lì. Le probabilità mostrate restano quelle originali del modello; la scelta è etichettata come «scelta del presentatore».
-- **Regia onesta**: pausa, stop e replay. Lo stop durante un calcolo scarta quel risultato; il replay riproduce la traccia registrata senza chiamare il modello ed è segnalato come tale. La registrazione completa si esporta in JSON (seed e parametri inclusi, per verificare ogni estrazione).
+- **Regia onesta**: pausa, stop e replay. Lo stop durante un calcolo scarta quel risultato; il replay riproduce la traccia registrata senza chiamare il modello ed è segnalato come tale. La registrazione completa si esporta in JSON versione 2 (seed e parametri inclusi); il testo è codificato in modo compatto per passo con `answerDelta` e `answerReset`.
 - **Regola di scelta**: predefinita «sempre il più probabile» (greedy); nelle opzioni avanzate si passa all'estrazione casuale pesata con temperatura, top-p e seme.
 - **Impostazioni del modello**: nelle opzioni avanzate si può personalizzare l'istruzione di sistema; Gemma 4 e Qwen3 espongono anche l'opzione di ragionamento del proprio template (`enable_thinking`).
 - **Modalità simulata** (`?mock`): stesso codice di scelta e stesso flusso con un modello finto, sempre dichiarata in pagina come simulazione. Usata dai test automatici.
@@ -118,7 +118,8 @@ Deploy automatico tramite workflow su push in `main`: `npm ci && npm run build`,
 - **WebGPU obbligatorio**: senza scheda grafica il modello non viene eseguito né scaricato; non esiste fallback su CPU.
 - **Gemma 4 E2B su macchine con poca memoria**: il caricamento può fallire o mandare in crash il tab su macchine con 8 GB; per questo esiste il suggerimento del modello leggero. Un crash di Gemma su questa classe di macchine è un esito atteso da documentare, non un difetto.
 - **Qualità linguistica**: un modello da ~1B/0.6B parametri commette errori; l'obiettivo è osservare il processo, non produrre testo di qualità.
-- **Contesto**: prompt fino a 240 caratteri, risposta fino a 128 token, 8 candidati mostrati per passo.
+- **Contesto**: il limite configurabile vale per l'intera sessione e include eventuali token di ragionamento. L'app aggiunge al prompt di sistema una richiesta non vincolante di concludere entro il budget; il limite effettivo è applicato localmente in base allo spazio residuo del modello dopo la tokenizzazione dell'intero input. Il prompt è limitato a 240 caratteri.
+- **Limite del runtime**: non esiste un singolo parametro equivalente a `max_tokens` di Chat Completions in questo flusso locale. Per mostrare punteggi e scelta un token alla volta, ogni chiamata Transformers.js usa `max_new_tokens: 1`; il budget totale è quindi una richiesta nel prompt più un limite di sicurezza della sessione, non un vincolo globale garantito dal modello.
 - **Campionamento**: al massimo 64 candidati ammessi all'estrazione; l'ordine dei filtri è temperatura → 64 candidati → top-p → rinormalizzazione.
 
 ## Smoke test manuale

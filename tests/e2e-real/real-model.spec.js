@@ -122,7 +122,8 @@ test('una risposta reale: probabilitÃ  del modello, allineate e mostrate fedelme
 
   // Quello che si vede Ã¨ la traccia di questa stessa invocazione.
   const last = trace.steps.at(-1);
-  await expect(page.getByTestId('answer')).toContainText(last.answerText.trim());
+  const lastAnswer = await page.evaluate(() => window.__nextTokenDemo.trace.steps.at(-1).answerText);
+  await expect(page.getByTestId('answer')).toContainText(lastAnswer.trim());
   const rows = page.locator('[data-testid="chart"] li.row:not(.other)');
   await expect(rows).toHaveCount(last.candidates.length);
   for (let i = 0; i < last.candidates.length; i++) {
@@ -144,7 +145,7 @@ test('una risposta reale: probabilitÃ  del modello, allineate e mostrate fedelme
       firstStepMs: trace.steps[0].timing.stepMs,
       meanDecodeStepMs: Math.round(stepMs.reduce((a, b) => a + b, 0) / Math.max(1, stepMs.length)),
       longTasksMs: longTasks.map(Math.round),
-      answer: last.answerText,
+      answer: lastAnswer,
     }),
   });
 });
@@ -199,6 +200,7 @@ test('scelta del presentatore: un altro candidato, poi il modello continua da lÃ
   await page.locator(`[data-testid="chart"] li.row[data-id="${alt.id}"]`).click();
   await expect(page.getByTestId('choice')).toContainText('Scelto da te', { timeout: 30_000 });
   const after = await page.evaluate(() => window.__nextTokenDemo.trace.steps[0]);
+  const afterAnswer = await page.evaluate(() => window.__nextTokenDemo.trace.steps[0].answerText);
   expect(after.selected.id).toBe(alt.id);
   expect(after.override.original.id).toBe(before.selected.id);
   expect(after.candidates).toEqual(before.candidates);
@@ -208,7 +210,8 @@ test('scelta del presentatore: un altro candidato, poi il modello continua da lÃ
   const trace = await page.evaluate(() => window.__nextTokenDemo.trace);
   expect(trace.steps[1].contextLength).toBe(trace.input.ids.length + 1);
   expect(trace.steps[1].processedTokens).toBe(1);
-  expect(trace.steps[1].answerText.startsWith(after.answerText.replace(/ï¿½+$/, ''))).toBe(true);
+  const nextAnswer = await page.evaluate(() => window.__nextTokenDemo.trace.steps[1].answerText);
+  expect(nextAnswer.startsWith(afterAnswer.replace(/ï¿½+$/, ''))).toBe(true);
   test.info().annotations.push({ type: 'override', description: JSON.stringify({ original: before.selected.piece?.text, forced: alt.piece?.text, next: trace.steps[1].selected.piece?.text }) });
   await page.getByTestId('btn-stop').click();
   await page.waitForFunction(() => window.__nextTokenDemo.state === 'done');

@@ -63,13 +63,16 @@ export function choiceSentence(step, tokenLabel, originalLabel = null) {
     + `probabilità di estrazione ${formatPercent(s.policyProb)}.`;
 }
 
-export function finishLabel(reason, { maxNewTokens } = {}) {
+export function finishLabel(reason, { maxNewTokens, maxContextTokens, limitReason } = {}) {
   switch (reason) {
     case 'eos':
       return 'Il modello ha scelto il token di fine: la risposta è completa.';
     case 'length':
+      if (limitReason === 'context') {
+        return `Raggiunto il limite di contesto del modello (${formatNumber(maxContextTokens)} token complessivi): la risposta si è fermata dopo ${formatNumber(maxNewTokens)} token generati.`;
+      }
       return maxNewTokens
-        ? `Raggiunto il limite di ${maxNewTokens} token impostato dall'app: la risposta è stata interrotta.`
+        ? `Raggiunto il limite di ${formatNumber(maxNewTokens)} token impostato nell'app: la risposta è stata interrotta.`
         : "Raggiunto il limite di lunghezza impostato dall'app: la risposta è stata interrotta.";
     case 'stopped':
       return 'Generazione fermata.';

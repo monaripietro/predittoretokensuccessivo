@@ -9,6 +9,7 @@ describe('registro dei modelli', () => {
     for (const m of Object.values(MODELS)) {
       expect(m.revision).toMatch(/^[0-9a-f]{40}$/);
       expect(m.devices?.length).toBeGreaterThan(0);
+      expect(Number.isSafeInteger(m.maxContextTokens) && m.maxContextTokens > 0).toBe(true);
       for (const dtype of Object.keys(m.variants)) {
         const files = filesFor(m, dtype);
         expect(Object.values(files).every((n) => Number.isInteger(n) && n > 0)).toBe(true);
