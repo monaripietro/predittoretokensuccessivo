@@ -118,7 +118,7 @@ Deploy automatico tramite workflow su push in `main`: `npm ci && npm run build`,
 - **WebGPU obbligatorio**: senza scheda grafica il modello non viene eseguito né scaricato; non esiste fallback su CPU.
 - **Gemma 4 E2B su macchine con poca memoria**: il caricamento può fallire o mandare in crash il tab su macchine con 8 GB; per questo esiste il suggerimento del modello leggero. Un crash di Gemma su questa classe di macchine è un esito atteso da documentare, non un difetto.
 - **Qualità linguistica**: un modello da ~1B/0.6B parametri commette errori; l'obiettivo è osservare il processo, non produrre testo di qualità.
-- **Contesto**: prompt fino a 240 caratteri, risposta fino a 128 token, 8 candidati mostrati per passo.
+- **Contesto**: prompt fino a 240 caratteri, risposta fino a 2048 token generati (inclusi eventuali token di ragionamento), 8 candidati mostrati per passo.
 - **Campionamento**: al massimo 64 candidati ammessi all'estrazione; l'ordine dei filtri è temperatura → 64 candidati → top-p → rinormalizzazione.
 
 ## Smoke test manuale

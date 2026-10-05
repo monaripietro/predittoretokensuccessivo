@@ -161,7 +161,7 @@ kbd {
 /* ---------- Struttura ---------- */
 
 .topbar, main, .footer {
-  max-width: 1320px;
+  max-width: 1720px;
   margin: 0 auto;
   padding-left: 16px;
   padding-right: 16px;
@@ -232,7 +232,7 @@ h2 {
 .model-chip[data-state="sim"]::before { background: var(--policy); }
 
 .sim-banner {
-  max-width: 1320px;
+  max-width: 1720px;
   margin: 0 auto 0.75rem;
   padding: 0.7rem 16px;
   background: var(--warn-bg);
@@ -471,7 +471,7 @@ textarea:focus { outline: none; border-color: var(--brand); background: var(--su
 
 /* ---------- Banco di lavoro ---------- */
 
-.workbench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1.25rem; }
+.workbench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 1.25rem; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
 .count {
   font-size: 0.8rem;
@@ -493,7 +493,7 @@ textarea:focus { outline: none; border-color: var(--brand); background: var(--su
   flex-wrap: wrap;
   gap: 0.4rem;
   align-items: flex-start;
-  height: 15rem;
+  height: clamp(18rem, 42vh, 32rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   align-content: flex-start;
@@ -794,6 +794,7 @@ input[type="range"] { width: 100%; accent-color: var(--brand); }
   :root { font-size: 16px; }
   .card { padding: 1rem 1rem; }
   h1 { font-size: 1.5rem; }
+  .tokens { height: clamp(15rem, 38vh, 22rem); }
   .chart .row, .chart.sampling .row { grid-template-columns: 1rem minmax(4rem, 6.5rem) minmax(0, 1fr) 3.9rem 0.9rem; gap: 0.35rem; padding: 0.25rem 0.2rem; }
   .controls { width: 100%; }
   .controls .primary { flex: 1 1 100%; white-space: nowrap; }

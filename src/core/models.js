@@ -130,7 +130,7 @@ export const LIMITS = Object.freeze({
   maxInputTokens: 160,
   defaultNewTokens: 48,
   minNewTokens: 8,
-  maxNewTokens: 128,
+  maxNewTokens: 2048,
   displayCandidates: 8,
 });
 

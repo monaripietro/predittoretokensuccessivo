@@ -171,6 +171,27 @@ describe('motore: fine, stop ed errori', () => {
       .rejects.toMatchObject({ code: 'invalid-max-new-tokens' });
   });
 
+  it('consente più di 128 token e conta anche quelli generati con il thinking attivo', async () => {
+    const { tf, engine } = await setup({}, THINKING_SPEC);
+    const newline = tf.created.tokenizer.byPiece.get('\n');
+    const originalLogitsFor = tf.created.model.logitsFor.bind(tf.created.model);
+    tf.created.model.logitsFor = (ids) => {
+      const logits = originalLogitsFor(ids).fill(-100);
+      logits[newline] = 10;
+      return logits;
+    };
+
+    const begun = await engine.begin({
+      text: 'Ciao', policy: { kind: 'greedy' }, maxNewTokens: 129, thinking: true,
+    });
+    expect(begun.maxNewTokens).toBe(129);
+    expect(begun.thinking).toBe(true);
+    let event;
+    for (let i = 0; i < 129; i++) event = await engine.step({ sessionId: begun.sessionId });
+    expect(event.index).toBe(128);
+    expect(event.finish).toBe('length');
+  });
+
   it('si ferma al token di fine e lo dichiara', async () => {
     const { engine } = await setup();
     const b = await engine.begin({ text: "Qual è la capitale d'Italia?", policy: { kind: 'greedy' } });
