@@ -3,10 +3,15 @@ import { createEngine } from '../../src/engine/engine.js';
 import { createFakeTf, MOCK_SPEC } from '../../src/engine/fakeTf.js';
 import { scanLogits, modelProbability, topKIndices } from '../../src/core/distribution.js';
 
-async function setup(modelOptions = {}) {
+const THINKING_SPEC = {
+  ...MOCK_SPEC,
+  thinking: { parameter: 'enable_thinking', default: false },
+};
+
+async function setup(modelOptions = {}, spec = MOCK_SPEC) {
   const tf = createFakeTf(modelOptions);
   const engine = createEngine(tf, { device: 'test' });
-  await engine.load({ spec: MOCK_SPEC, dtype: 'mock' });
+  await engine.load({ spec, dtype: 'mock' });
   return { tf, engine };
 }
 
@@ -32,6 +37,34 @@ describe('motore: input della chat', () => {
     const { engine } = await setup();
     expect(() => engine.tokenize({ text: '   ' })).toThrow(/Scrivi/);
     expect(() => engine.tokenize({ text: 'a'.repeat(500) })).toThrow(/caratteri/);
+  });
+
+  it('usa il system prompt scelto e ne conserva l’origine dei token', async () => {
+    const { tf, engine } = await setup();
+    const input = engine.tokenize({ text: 'Ciao', systemPrompt: 'Rispondi con una parola.' });
+    expect(input.systemPrompt).toBe('Rispondi con una parola.');
+    expect(input.fullText).toContain('Rispondi con una parola.');
+    expect(input.tokens.some((t) => t.origin === 'system')).toBe(true);
+    expect(tf.created.tokenizer.lastChatTemplate.messages[0].content).toBe('Rispondi con una parola.');
+  });
+
+  it('rifiuta un system prompt oltre il limite', async () => {
+    const { engine } = await setup();
+    expect(() => engine.tokenize({ text: 'Ciao', systemPrompt: 'a'.repeat(241) }))
+      .toThrow(/istruzione di sistema/);
+  });
+
+  it('passa al template il thinking solo per i modelli che lo supportano', async () => {
+    const { tf, engine } = await setup({}, THINKING_SPEC);
+    const off = engine.tokenize({ text: 'Ciao', thinking: false });
+    expect(off.thinking).toBe(false);
+    expect(tf.created.tokenizer.lastChatTemplate.options.enable_thinking).toBe(false);
+    const on = engine.tokenize({ text: 'Ciao', thinking: true });
+    expect(on.thinking).toBe(true);
+    expect(tf.created.tokenizer.lastChatTemplate.options.enable_thinking).toBe(true);
+    const begun = await engine.begin({ text: 'Ciao', policy: { kind: 'greedy' }, thinking: true });
+    expect(begun.thinking).toBe(true);
+    expect(begun.input.thinking).toBe(true);
   });
 });
 
@@ -132,6 +165,12 @@ describe('motore: allineamento punteggi ↔ token scelto', () => {
 });
 
 describe('motore: fine, stop ed errori', () => {
+  it('rifiuta un limite di generazione non numerico', async () => {
+    const { engine } = await setup();
+    await expect(engine.begin({ text: 'Ciao', policy: { kind: 'greedy' }, maxNewTokens: Number.NaN }))
+      .rejects.toMatchObject({ code: 'invalid-max-new-tokens' });
+  });
+
   it('si ferma al token di fine e lo dichiara', async () => {
     const { engine } = await setup();
     const b = await engine.begin({ text: "Qual è la capitale d'Italia?", policy: { kind: 'greedy' } });

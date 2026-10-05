@@ -53,6 +53,7 @@ export class FakeTokenizer {
     this.all_special_ids = SPECIALS.map((_, i) => i);
     this.byPiece = new Map(this.pieces.map((p, i) => [p, i]));
     this.sortedWords = WORDS.map((w, i) => [w, SPECIALS.length + i]).sort((a, b) => b[0].length - a[0].length);
+    this.lastChatTemplate = null;
   }
 
   encode(text) {
@@ -100,6 +101,11 @@ export class FakeTokenizer {
   }
 
   apply_chat_template(messages, { add_generation_prompt = false } = {}) {
+    this.lastChatTemplate = {
+      messages: messages.map((message) => ({ ...message })),
+      add_generation_prompt,
+      options: arguments[1] ? { ...arguments[1] } : {},
+    };
     let out = '<bos>';
     for (const m of messages) out += `<|turn>${m.role}\n${m.content.trim()}<turn|>\n`;
     if (add_generation_prompt) out += '<|turn>model\n';

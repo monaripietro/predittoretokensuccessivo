@@ -101,11 +101,22 @@ describe('campionamento', () => {
     const policy = validatePolicy({ kind: 'sample', temperature: 0.5, topP: 0.9, topK: 3 });
     const { pool, massBeforeRenormalization } = samplingPool(logits, policy);
     const ref = referenceSoftmax(Array.from(logits), 0.5);
-    // top-k=3 limita i candidati; top-p si ferma quando la massa cumulativa raggiunge 0,9
+    const topKMass = ref[0] + ref[1] + ref[2];
+    // top-k=3 limita i candidati; top-p si ferma sulla massa già limitata
+    // quando la cumulativa raggiunge 0,9.
     expect(pool.map((c) => c.id)).toEqual([0, 1]);
-    expect(massBeforeRenormalization).toBeCloseTo(ref[0] + ref[1], 12);
+    expect(massBeforeRenormalization).toBeCloseTo((ref[0] + ref[1]) / topKMass, 12);
     expect(pool[0].prob).toBeCloseTo(ref[0] / (ref[0] + ref[1]), 12);
     expect(pool.reduce((s, c) => s + c.prob, 0)).toBeCloseTo(1, 12);
+  });
+
+  it('applica top-p dopo top-k anche quando la temperatura cambia la soglia', () => {
+    const logits = Float32Array.from([4, 3, 0]);
+    const policy = validatePolicy({ kind: 'sample', temperature: 1, topP: 0.73, topK: 2 });
+    const { pool } = samplingPool(logits, policy);
+    // Il primo token vale circa 0,731 nella distribuzione top-k, ma solo
+    // circa 0,727 prima del filtro: top-p deve fermarsi al primo.
+    expect(pool.map((c) => c.id)).toEqual([0]);
   });
 
   it('l\'estrazione usa le probabilità dell\'insieme ammesso', () => {

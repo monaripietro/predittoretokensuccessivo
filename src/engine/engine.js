@@ -29,6 +29,17 @@ function toIdArray(tensorOrArray) {
   return Array.from(data, (x) => Number(x));
 }
 
+function normalizeSystemPrompt(value) {
+  const prompt = String(value ?? SYSTEM_PROMPT).trim();
+  if (prompt.length > LIMITS.maxSystemPromptChars) {
+    throw new EngineError(
+      'system-prompt-too-long',
+      `L'istruzione di sistema supera ${LIMITS.maxSystemPromptChars} caratteri.`,
+    );
+  }
+  return prompt;
+}
+
 /**
  * @param {object} tf modulo Transformers.js (o un sostituto con la stessa API)
  * @param {object} [options]
@@ -97,6 +108,13 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     const eos = genConfig.eos_token_id ?? tokenizer.eos_token_id;
     const eosIds = (Array.isArray(eos) ? eos : [eos]).filter((x) => Number.isInteger(x));
     isSpecial = makeSpecialTokenTest(tokenizer, eosIds);
+    const thinking = spec.thinking
+      ? {
+        supported: true,
+        parameter: spec.thinking.parameter,
+        default: Boolean(spec.thinking.default),
+      }
+      : null;
     info = {
       modelKey: spec.key ?? modelKey,
       modelId: spec.id,
@@ -105,6 +123,7 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
       dtype,
       device,
       chatTemplateOptions: spec.chatTemplateOptions ?? {},
+      thinking,
       eosIds,
       eosTokens: eosIds.map((id) => tokenizer.decode([id], { skip_special_tokens: false })),
       tokenizerMs: Math.round(tTok - t0),
@@ -131,33 +150,42 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
   }
 
   /** Costruisce l'input esatto inviato al modello (modello di chat incluso). */
-  function buildInput(text) {
+  function buildInput(text, { systemPrompt: requestedSystemPrompt = SYSTEM_PROMPT, thinking: requestedThinking } = {}) {
     requireModel();
     const userText = String(text ?? '').trim();
     if (!userText) throw new EngineError('empty-prompt', 'Scrivi una domanda o una frase.');
     if (userText.length > LIMITS.maxPromptChars) {
       throw new EngineError('prompt-too-long', `Il testo supera ${LIMITS.maxPromptChars} caratteri.`);
     }
+    const systemPrompt = normalizeSystemPrompt(requestedSystemPrompt);
+    const chatTemplateOptions = { ...info.chatTemplateOptions };
+    let thinking = null;
+    if (info.thinking) {
+      thinking = typeof requestedThinking === 'boolean' ? requestedThinking : info.thinking.default;
+      chatTemplateOptions[info.thinking.parameter] = thinking;
+    }
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: userText },
     ];
     const fullText = tokenizer.apply_chat_template(messages, {
       tokenize: false,
       add_generation_prompt: true,
-      ...info.chatTemplateOptions,
+      ...chatTemplateOptions,
     });
     const ids = toIdArray(tokenizer.encode(fullText, { add_special_tokens: false }));
     const pieces = piecesOf(tokenizer, ids, isSpecial);
-    const sysStart = fullText.indexOf(SYSTEM_PROMPT);
-    const userStart = fullText.indexOf(userText, sysStart >= 0 ? sysStart + SYSTEM_PROMPT.length : 0);
+    const sysStart = systemPrompt ? fullText.indexOf(systemPrompt) : -1;
+    const userStart = fullText.indexOf(userText, sysStart >= 0 ? sysStart + systemPrompt.length : 0);
     const spans = [];
-    if (sysStart >= 0) spans.push({ start: sysStart, end: sysStart + SYSTEM_PROMPT.length, origin: 'system' });
+    if (sysStart >= 0) spans.push({ start: sysStart, end: sysStart + systemPrompt.length, origin: 'system' });
     if (userStart >= 0) spans.push({ start: userStart, end: userStart + userText.length, origin: 'user' });
     const labelled = labelOrigins(pieces, spans);
     const reconstructed = pieces.map((p) => p.text).join('');
     return {
       userText,
+      systemPrompt,
+      thinking,
       fullText,
       ids,
       tokens: labelled.map((p) => ({
@@ -169,8 +197,8 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
     };
   }
 
-  function tokenize({ text }) {
-    return buildInput(text);
+  function tokenize({ text, systemPrompt, thinking }) {
+    return buildInput(text, { systemPrompt, thinking });
   }
 
   async function disposeSession() {
@@ -190,16 +218,21 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
    */
   function begin({
     text, policy, seed, maxNewTokens = LIMITS.defaultNewTokens, cacheMode = 'cache',
+    systemPrompt, thinking,
   }) {
     return serial(async () => {
       requireModel();
       await disposeSession();
-      const input = buildInput(text);
+      const input = buildInput(text, { systemPrompt, thinking });
       if (input.tooLong) {
         throw new EngineError('input-too-long', `L'input supera ${LIMITS.maxInputTokens} token: accorcia il testo.`);
       }
       const p = validatePolicy(policy);
-      const n = Math.max(1, Math.min(LIMITS.maxNewTokens, Math.floor(maxNewTokens)));
+      const requestedMaxNewTokens = Number(maxNewTokens);
+      if (!Number.isFinite(requestedMaxNewTokens)) {
+        throw new EngineError('invalid-max-new-tokens', 'Il limite di token generati deve essere un numero.');
+      }
+      const n = Math.max(1, Math.min(LIMITS.maxNewTokens, Math.floor(requestedMaxNewTokens)));
       const s = Number.isInteger(seed) ? seed >>> 0 : (Math.random() * 2 ** 32) >>> 0;
       session = {
         id: `${Date.now().toString(36)}-${s.toString(36)}`,
@@ -216,7 +249,13 @@ export function createEngine(tf, { device = 'webgpu', onProgress = () => {} } = 
         finished: null,
       };
       return {
-        sessionId: session.id, input, policy: p, seed: p.kind === 'sample' ? s : null, maxNewTokens: n, cacheMode: session.cacheMode,
+        sessionId: session.id,
+        input,
+        thinking: input.thinking,
+        policy: p,
+        seed: p.kind === 'sample' ? s : null,
+        maxNewTokens: n,
+        cacheMode: session.cacheMode,
       };
     });
   }

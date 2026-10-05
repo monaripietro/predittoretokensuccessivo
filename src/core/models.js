@@ -47,6 +47,7 @@ export const MODELS = {
       },
     },
     chatTemplateOptions: { enable_thinking: false },
+    thinking: { parameter: 'enable_thinking', default: false },
     tier: 'recommended',
     devices: ['webgpu'],
   },
@@ -68,6 +69,7 @@ export const MODELS = {
       q4: { requiresF16: false, files: { 'onnx/model_q4.onnx': 919096585 } },
     },
     chatTemplateOptions: { enable_thinking: false },
+    thinking: { parameter: 'enable_thinking', default: false },
     tier: 'light',
     devices: ['webgpu'],
   },
@@ -124,6 +126,7 @@ export const CPU_MODEL_KEY = 'smollm2-135m';
 /** Limiti didattici: risposte brevi e contesto contenuto. */
 export const LIMITS = Object.freeze({
   maxPromptChars: 240,
+  maxSystemPromptChars: 240,
   maxInputTokens: 160,
   defaultNewTokens: 48,
   minNewTokens: 8,

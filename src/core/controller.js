@@ -123,6 +123,7 @@ export function createController({
    */
   async function start({
     text, policy, maxNewTokens, seed, meta = {}, autoplay = false, cacheMode = 'cache',
+    systemPrompt, thinking,
   }) {
     if (busy || ![STATES.IDLE, STATES.DONE].includes(state)) return false;
     stopRequested = false;
@@ -131,7 +132,7 @@ export function createController({
     let begun;
     try {
       begun = await client.call('begin', {
-        text, policy, maxNewTokens, seed, cacheMode,
+        text, policy, maxNewTokens, seed, cacheMode, systemPrompt, thinking,
       });
     } catch (err) {
       setState(STATES.IDLE);
@@ -144,6 +145,7 @@ export function createController({
       startedAt: new Date().toISOString(),
       meta,
       input: begun.input,
+      thinking: begun.thinking ?? begun.input.thinking ?? null,
       policy: begun.policy,
       seed: begun.seed,
       maxNewTokens: begun.maxNewTokens,
