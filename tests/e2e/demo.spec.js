@@ -77,10 +77,11 @@ test.describe('generazione', () => {
     await setSpeed(page, 'fast');
     await runToEnd(page, 'Quante zampe ha un ragno?');
     const trace = await demo(page, () => window.__nextTokenDemo.trace);
+    const lastAnswer = await demo(page, () => window.__nextTokenDemo.trace.steps.at(-1).answerText);
     expect(trace.finish).toBe('eos');
     const last = trace.steps.at(-1);
     // Risposta = decodifica degli ID generati
-    await expect(page.getByTestId('answer')).toContainText(last.answerText);
+    await expect(page.getByTestId('answer')).toContainText(lastAnswer);
     await expect(page.getByTestId('answer')).toContainText('fine');
     // Ogni token generato è tornato nell'input
     await expect(page.locator('[data-testid="tokens"] .tok.o-generated')).toHaveCount(trace.steps.length);

@@ -113,6 +113,46 @@ describe('output con ragionamento separato', () => {
     expect(state.markerBuffer).toBe('');
   });
 
+  it('ricostruisce l’output dal delta compatto registrato per il replay', () => {
+    const state = view();
+    appendThinkingAwareOutput(state, {
+      ...step('A', '', false, false, 0),
+      answerDelta: 'A',
+      answerReset: false,
+    });
+    appendThinkingAwareOutput(state, {
+      ...step('AB', '', false, false, 1),
+      answerDelta: 'B',
+      answerReset: false,
+    });
+    expect(state.answerText).toBe('AB');
+    expect(state.answerParts.map((part) => part.text).join('')).toBe('AB');
+
+    appendThinkingAwareOutput(state, {
+      ...step('X', '', false, false, 2),
+      answerDelta: 'X',
+      answerReset: true,
+    });
+    expect(state.answerText).toBe('X');
+    expect(state.answerParts.map((part) => part.text).join('')).toBe('ABX');
+  });
+
+  it('mantiene i byte pendenti che diventano interni dopo la decodifica successiva', () => {
+    const state = view();
+    appendThinkingAwareOutput(state, {
+      ...step('A�', '', false, false, 0),
+      answerDelta: 'A�',
+      answerReset: false,
+    });
+    appendThinkingAwareOutput(state, {
+      ...step('A�B', '', false, false, 1),
+      answerDelta: '�B',
+      answerReset: false,
+    });
+    expect(state.answerText).toBe('A�B');
+    expect(state.pendingBytes).toBe(false);
+  });
+
   it('riconosce anche i marker di canale Gemma come testo ordinario e diviso', () => {
     const state = view();
     appendThinkingAwareOutput(state, step('<|cha', '<|cha', false, false, 0));

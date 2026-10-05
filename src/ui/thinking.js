@@ -221,7 +221,10 @@ export function appendThinkingAwareOutput(view, step) {
     return;
   }
 
-  const decoded = step.answerText ?? '';
+  const compact = typeof step.answerDelta === 'string';
+  const decoded = compact
+    ? (step.answerReset ? step.answerDelta : `${view.answerText}${step.answerDelta}`)
+    : (step.answerText ?? '');
   let next = decoded;
   while (next.endsWith(REPLACEMENT)) next = next.slice(0, -1);
   view.pendingBytes = next.length !== decoded.length;

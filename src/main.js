@@ -7,7 +7,7 @@
 import './ui/fonts.js';
 import { EngineClient } from './engine/client.js';
 import { createMockClient } from './engine/mockClient.js';
-import { createController, STATES } from './core/controller.js';
+import { compactTraceForExport, createController, STATES } from './core/controller.js';
 import {
   MODELS, SYSTEM_PROMPT, LIMITS, pickVariant, downloadBytes, formatBytes, suggestModelKey, modelsFor, CPU_MODEL_KEY,
 } from './core/models.js';
@@ -147,7 +147,7 @@ function resetView(trace) {
     lastThinkingFlagChanges: [],
     pendingBytes: false,
     pendingBytesThinking: false,
-    answerSnaps: [],
+    answerSnap: null,
     replay: false,
   };
 }
@@ -415,10 +415,11 @@ async function present(step, { replay, signal, override = false }) {
   if (step.vocabSize) $('chart-caption').textContent = chartCaption(step.policy, step.vocabSize);
   if (override) {
     // Il presentatore ha cambiato la scelta: si annulla l'effetto dell'ultimo passo.
-    const snap = v.answerSnaps.pop();
+    const snap = v.answerSnap;
+    v.answerSnap = null;
     if (snap) {
-      v.answerParts = snap.parts.map((p) => ({ ...p }));
-      v.thinkingParts = snap.thinkingParts.map((p) => ({ ...p }));
+      v.answerParts.length = snap.answerPartsLength;
+      v.thinkingParts.length = snap.thinkingPartsLength;
       for (const [index, thinking] of v.lastThinkingFlagChanges) {
         if (v.generated[index]) v.generated[index].thinking = thinking;
       }
@@ -428,13 +429,18 @@ async function present(step, { replay, signal, override = false }) {
       v.hasThinking = snap.hasThinking;
       v.pendingChannel = snap.pendingChannel;
       v.channelBuffer = snap.channelBuffer;
-      v.channelOwners = snap.channelOwners.slice();
-      v.channelEntries = snap.channelEntries.map((entry) => ({ ...entry }));
+      v.channelOwners = snap.channelOwners;
+      v.channelOwners.length = snap.channelOwnersLength;
+      v.channelEntries = snap.channelEntries;
+      v.channelEntries.length = snap.channelEntriesLength;
       v.markerBuffer = snap.markerBuffer;
-      v.markerOwners = snap.markerOwners.slice();
+      v.markerOwners = snap.markerOwners;
+      v.markerOwners.length = snap.markerOwnersLength;
       v.tokenThinking = snap.tokenThinking;
-      v.tokenStepsToMark = snap.tokenStepsToMark.slice();
-      v.tokenStepsToUnmark = snap.tokenStepsToUnmark.slice();
+      v.tokenStepsToMark = snap.tokenStepsToMark;
+      v.tokenStepsToMark.length = snap.tokenStepsToMarkLength;
+      v.tokenStepsToUnmark = snap.tokenStepsToUnmark;
+      v.tokenStepsToUnmark.length = snap.tokenStepsToUnmarkLength;
       v.pendingBytes = snap.pendingBytes;
       v.pendingBytesThinking = snap.pendingBytesThinking;
       renderAnswer();
@@ -477,24 +483,29 @@ async function present(step, { replay, signal, override = false }) {
   setStage('decode');
   const p = s.piece ?? {};
   $('choice').append(' ', el('span', { class: 'decode' }, `ID ${s.id} → ${p.special ? p.text : JSON.stringify(p.text ?? '')}`));
-  v.answerSnaps.push({
-    parts: v.answerParts.map((x) => ({ ...x })),
-    thinkingParts: v.thinkingParts.map((x) => ({ ...x })),
+  v.answerSnap = {
+    answerPartsLength: v.answerParts.length,
+    thinkingPartsLength: v.thinkingParts.length,
     text: v.answerText,
     thinkingOpen: v.thinkingOpen,
     hasThinking: v.hasThinking,
     pendingChannel: v.pendingChannel,
     channelBuffer: v.channelBuffer,
-    channelOwners: v.channelOwners.slice(),
-    channelEntries: v.channelEntries.map((entry) => ({ ...entry })),
+    channelOwners: v.channelOwners,
+    channelOwnersLength: v.channelOwners.length,
+    channelEntries: v.channelEntries,
+    channelEntriesLength: v.channelEntries.length,
     markerBuffer: v.markerBuffer,
-    markerOwners: v.markerOwners.slice(),
+    markerOwners: v.markerOwners,
+    markerOwnersLength: v.markerOwners.length,
     tokenThinking: v.tokenThinking,
-    tokenStepsToMark: v.tokenStepsToMark.slice(),
-    tokenStepsToUnmark: v.tokenStepsToUnmark.slice(),
+    tokenStepsToMark: v.tokenStepsToMark,
+    tokenStepsToMarkLength: v.tokenStepsToMark.length,
+    tokenStepsToUnmark: v.tokenStepsToUnmark,
+    tokenStepsToUnmarkLength: v.tokenStepsToUnmark.length,
     pendingBytes: v.pendingBytes,
     pendingBytesThinking: v.pendingBytesThinking,
-  });
+  };
   appendAnswer(step);
   if (s.special) narrate('6', `Il token di controllo (ID ${s.id}) non diventa testo visibile: chiude la risposta.`);
   else if (p.fragment) narrate('6', `L'ID ${s.id} è solo un pezzo (byte) di un carattere: il testo comparirà quando arriveranno gli altri pezzi.`);
@@ -804,7 +815,7 @@ function updateControls() {
 function exportTrace() {
   const trace = controller.trace;
   if (!trace) return;
-  const blob = new Blob([JSON.stringify(trace, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(compactTraceForExport(trace), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = el('a', { href: url, download: `registrazione-${trace.startedAt.replace(/[:.]/g, '-')}.json` });
   document.body.append(a);
