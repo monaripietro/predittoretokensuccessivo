@@ -216,6 +216,21 @@ test.describe('generazione', () => {
     expect(await demo(page, () => window.__nextTokenDemo.engineCalls.length)).toBe(callsBefore);
   });
 
+  test('il replay automatico prosegue quando i token appartengono al ragionamento', async ({ page }) => {
+    await setSpeed(page, 'fast');
+    await runToEnd(page, 'Perché il cielo è blu?');
+    await demo(page, () => {
+      const first = window.__nextTokenDemo.trace.steps[0].selected;
+      first.special = true;
+      first.piece.text = '<think>';
+    });
+    await page.getByTestId('btn-replay').click();
+    await page.getByTestId('btn-auto').click();
+    await page.waitForFunction(() => window.__nextTokenDemo.state === 'done', null, { timeout: 10_000 });
+    await expect(page.getByTestId('thinking-token-group')).toHaveCount(1);
+    await expect(page.getByTestId('finish-note')).toContainText('senza nuovi calcoli');
+  });
+
   test('tastiera: → e Spazio avanzano di un token, Esc ferma', async ({ page }) => {
     await setSpeed(page, 'fast');
     await start(page, 'Perché il cielo è blu?');
