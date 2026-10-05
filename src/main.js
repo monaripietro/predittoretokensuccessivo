@@ -9,7 +9,7 @@ import { EngineClient } from './engine/client.js';
 import { createMockClient } from './engine/mockClient.js';
 import { createController, STATES } from './core/controller.js';
 import {
-  MODELS, LIMITS, pickVariant, downloadBytes, formatBytes, suggestModelKey, modelsFor, CPU_MODEL_KEY,
+  MODELS, SYSTEM_PROMPT, LIMITS, pickVariant, downloadBytes, formatBytes, suggestModelKey, modelsFor, CPU_MODEL_KEY,
 } from './core/models.js';
 import {
   isModelCached, deleteModelFiles, requestPersistentStorage, storageEstimate,
@@ -30,6 +30,7 @@ import {
 
 const params = new URLSearchParams(location.search);
 const SIMULATED = params.has('mock');
+const SYSTEM_PROMPT_STORAGE_KEY = 'system-prompt';
 
 /** Ritmo della presentazione (ms per fase). Non influisce sui calcoli. */
 const PACE = {
@@ -325,8 +326,11 @@ async function introduce(trace, { replay, signal }) {
   narrate('1', [replay ? 'Replay della registrazione. Avevi scritto: ' : 'Hai scritto: ', tq(`«${trace.input.userText}»`)]);
   await anatomy.prompt(trace.input.userText, { duration: t.intro, signal });
   setStage('assemble');
-  narrate('2', `L'app aggiunge un'istruzione («${app.info?.systemPrompt ?? '…'}») e i marcatori della chat. Puoi vederli con «Mostra l'input completo».`);
-  await anatomy.assemble({ appTokenCount: tokens.length - userCount, systemPrompt: app.info?.systemPrompt ?? '' }, { duration: t.intro, signal });
+  const systemPrompt = trace.input.systemPrompt ?? app.info?.systemPrompt ?? '';
+  narrate('2', systemPrompt
+    ? `L'app aggiunge un'istruzione («${systemPrompt}») e i marcatori della chat. Puoi vederli con «Mostra l'input completo».`
+    : "L'app non aggiunge un'istruzione di sistema, ma solo i marcatori della chat. Puoi vederli con «Mostra l'input completo».");
+  await anatomy.assemble({ appTokenCount: tokens.length - userCount, systemPrompt }, { duration: t.intro, signal });
   setStage('tokenize');
   renderTokens();
   narrate('3', [
@@ -484,6 +488,15 @@ function readPolicy() {
   };
 }
 
+function readSystemPrompt() {
+  return $('system-prompt').value.trim();
+}
+
+function readThinking() {
+  if (!app.info?.thinking?.supported) return undefined;
+  return document.querySelector('input[name="thinking-mode"]:checked')?.value === 'on';
+}
+
 function readCacheMode() {
   return document.querySelector('input[name="cache-mode"]:checked')?.value === 'naive' ? 'naive' : 'cache';
 }
@@ -507,11 +520,19 @@ function updateSettingsUi() {
   $('policy-explain').textContent = sampling
     ? "L'app estrae un token a sorte, in proporzione alle probabilità (dopo temperatura e top-p): di solito esce uno dei primi, ma può uscire anche un token meno probabile. Ripetendo la stessa domanda la risposta può cambiare."
     : "L'app prende sempre il token con la probabilità più alta (decodifica «greedy»): la stessa domanda dà sempre la stessa risposta. Temperatura e top-p qui non servono.";
+  const thinkingSupported = Boolean(app.info?.thinking?.supported);
+  const thinkingSetting = $('thinking-setting');
+  thinkingSetting.hidden = !thinkingSupported;
+  thinkingSetting.querySelectorAll('input').forEach((i) => { i.disabled = !thinkingSupported; });
   const parts = [
     sampling ? `Scelta: estrazione (temperatura ${decimalIt($('temperature').value)}, top-p ${decimalIt($('top-p').value)})` : 'Scelta: sempre il più probabile',
     readCacheMode() === 'naive' ? 'Calcolo: ricalcolo completo' : 'Calcolo: KV cache',
     `Max ${$('max-tokens').value} token`,
   ];
+  if (thinkingSupported) parts.push(`Ragionamento: ${readThinking() ? 'attivo' : 'disattivato'}`);
+  if (readSystemPrompt() !== SYSTEM_PROMPT) {
+    parts.push(readSystemPrompt() ? 'Istruzione di sistema personalizzata' : 'Nessuna istruzione di sistema');
+  }
   $('settings-recap').textContent = parts.join(' · ');
   const running = controller.state !== STATES.IDLE && controller.state !== STATES.DONE;
   $('settings-note').textContent = running ? 'Generazione in corso: le modifiche varranno dal prossimo «Avvia».' : '';
@@ -559,8 +580,8 @@ function renderHistory() {
 function readSeed() {
   const raw = $('seed').value.trim();
   if (raw === '') return undefined;
-  const n = Number.parseInt(raw, 10);
-  return Number.isInteger(n) && n >= 0 ? n : undefined;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : undefined;
 }
 
 async function onPrimary() {
@@ -588,6 +609,8 @@ async function onPrimary() {
     seed: readSeed(),
     maxNewTokens: Number($('max-tokens').value),
     cacheMode: readCacheMode(),
+    systemPrompt: readSystemPrompt(),
+    thinking: readThinking(),
     meta: {
       model: app.info,
       simulated: SIMULATED,
@@ -690,6 +713,7 @@ function renderTech() {
     fillDl($('tech'), [['Stato', 'modello non caricato']]);
     return;
   }
+  const systemPrompt = app.view?.input?.systemPrompt ?? i.systemPrompt;
   fillDl($('tech'), [
     ['Modello', i.label],
     ['Repository', i.modelId],
@@ -702,7 +726,7 @@ function renderTech() {
     ['Download', i.downloadBytes ? formatBytes(i.downloadBytes) : null],
     ['Caricamento', `${formatNumber(i.tokenizerMs + i.modelMs)} ms`],
     ['Prova GPU', i.warmupMs ? `${formatNumber(i.warmupMs)} ms` : null],
-    ['Istruzione di sistema', i.systemPrompt],
+    ['Istruzione di sistema', systemPrompt || '(nessuna)'],
   ]);
 }
 
@@ -846,6 +870,7 @@ async function loadModel() {
     $('setup').hidden = true;
     $('load-progress').hidden = true;
     setModelChip('ready', `${m.name} · pronto${app.device === 'wasm' ? ' (processore)' : ''}`);
+    updateSettingsUi();
     renderTech();
     announce(`Modello pronto: ${m.name}. Scrivi una domanda e premi Avvia.`);
   } catch (err) {
@@ -891,6 +916,7 @@ async function changeModel() {
   renderTech();
   await renderModelChoice();
   await updateSetup();
+  updateSettingsUi();
   updateControls();
   $('setup').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -962,6 +988,12 @@ function wireUi() {
     .forEach((i) => i.addEventListener('input', updateSettingsUi));
   document.querySelectorAll('input[name="policy"], input[name="cache-mode"]')
     .forEach((i) => i.addEventListener('change', updateSettingsUi));
+  document.querySelectorAll('input[name="thinking-mode"]')
+    .forEach((i) => i.addEventListener('change', updateSettingsUi));
+  $('system-prompt').addEventListener('input', () => {
+    storageSet(SYSTEM_PROMPT_STORAGE_KEY, $('system-prompt').value);
+    updateSettingsUi();
+  });
   const panel = $('settings-panel');
   if (storageGet('settings-open') === '1') panel.open = true;
   panel.addEventListener('toggle', () => storageSet('settings-open', panel.open ? '1' : '0'));
@@ -974,6 +1006,9 @@ function wireUi() {
   bindOutput('temperature', 'temperature-out');
   bindOutput('top-p', 'top-p-out');
   bindOutput('max-tokens', 'max-tokens-out');
+
+  const savedSystemPrompt = storageGet(SYSTEM_PROMPT_STORAGE_KEY);
+  if (savedSystemPrompt !== null) $('system-prompt').value = savedSystemPrompt;
   updateSettingsUi();
 
   document.addEventListener('keydown', (e) => {

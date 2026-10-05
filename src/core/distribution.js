@@ -146,6 +146,8 @@ export function rankOf(logits, id) {
 /**
  * Insieme ammesso all'estrazione e relative probabilità rinormalizzate.
  * Ordine applicato: temperatura → top-k → top-p → rinormalizzazione.
+ * Il top-p è calcolato sulla distribuzione già limitata dal top-k, come nei
+ * warper di generazione: i filtri non reintroducono massa esclusa.
  */
 export function samplingPool(logits, policy, stats = scanLogits(logits)) {
   const { temperature, topP, topK } = policy;
@@ -156,15 +158,11 @@ export function samplingPool(logits, policy, stats = scanLogits(logits)) {
     if (stats.posInf > 0) return logits[id] === Infinity ? 1 : 0;
     return Math.exp(logits[id] / temperature - maxScaled);
   });
-  // Massa dopo la temperatura sull'intero vocabolario (serve per top-p).
-  let totalScaled = 0;
-  if (stats.posInf > 0) totalScaled = stats.posInf;
-  else {
-    for (let i = 0; i < logits.length; i++) {
-      const v = logits[i];
-      if (Number.isFinite(v)) totalScaled += Math.exp(v / temperature - maxScaled);
-    }
-  }
+  // Dopo il top-k, la massa di riferimento è quella dei candidati rimasti.
+  // Usare quella dell'intero vocabolario renderebbe top-p dipendente dai token
+  // già esclusi e applicherebbe i due filtri in un ordine diverso da quello
+  // dichiarato.
+  const totalScaled = scaled.reduce((sum, value) => sum + value, 0);
   const kept = [];
   let cumulative = 0;
   for (let j = 0; j < ordered.length; j++) {

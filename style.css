@@ -869,6 +869,7 @@ input[type="range"] { width: 100%; accent-color: var(--brand); }
 .setting-wide { grid-column: 1 / -1; }
 .setting legend { font-weight: 800; font-size: 1.02rem; padding: 0 0.3rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .setting legend output { font-variant-numeric: tabular-nums; background: var(--lime); color: var(--lime-ink); border-radius: 6px; padding: 0 0.4rem; }
+.setting textarea { width: 100%; min-height: 5.5rem; font-size: 1rem; }
 .stage-tag {
   font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
   border-radius: 999px; padding: 0.15rem 0.55rem;
