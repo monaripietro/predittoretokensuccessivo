@@ -406,6 +406,21 @@ test.describe('impostazioni della chatbot', () => {
     await expect(page.locator('#anatomy [data-stage="select"].setting-hint').first()).toBeVisible();
   });
 
+  test('permette di cambiare e conservare il system prompt effettivo della traccia', async ({ page }) => {
+    await page.locator('#settings-panel > summary').click();
+    const systemPrompt = page.getByTestId('system-prompt');
+    await expect(systemPrompt).toHaveValue('Rispondi in italiano, in modo breve e semplice: al massimo due frasi.');
+    await systemPrompt.fill('Rispondi con una sola parola.');
+    await expect(page.getByTestId('settings-recap')).toContainText('Istruzione di sistema personalizzata');
+    await setSpeed(page, 'fast');
+    await start(page, 'Ciao');
+    const trace = await demo(page, () => window.__nextTokenDemo.trace);
+    expect(trace.input.systemPrompt).toBe('Rispondi con una sola parola.');
+    expect(trace.input.fullText).toContain('Rispondi con una sola parola.');
+    await page.reload();
+    await expect(page.getByTestId('system-prompt')).toHaveValue('Rispondi con una sola parola.');
+  });
+
   test('ricalcolo completo: a ogni passo il modello rielabora tutta la sequenza, e lo dice', async ({ page }) => {
     await page.locator('#settings-panel > summary').click();
     await page.getByTestId('cache-naive').check();

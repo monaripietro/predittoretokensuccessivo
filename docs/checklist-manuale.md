@@ -43,6 +43,12 @@ Prima di iniziare: aprire il sito (locale con `npm run preview`, oppure l'URL pu
 - [ ] La riga sotto il grafico dichiara la regola usata (greedy / campionamento con i suoi parametri); il seme usato è salvato nella registrazione esportata (campo `seed`).
 - [ ] Stesso seme e stessi parametri danno la stessa risposta.
 
+### Istruzione e ragionamento (Avanzate)
+- [ ] L'istruzione di sistema predefinita è modificabile e resta salvata dopo un ricaricamento.
+- [ ] La traccia e l'input completo mostrano l'istruzione effettivamente usata, non quella predefinita se è stata cambiata.
+- [ ] Gemma 4 e Qwen3 mostrano il controllo di ragionamento; gli altri modelli non mostrano un'opzione non supportata dal template.
+- [ ] Con ragionamento attivo, i token aggiuntivi restano compresi nel limite dichiarato e la generazione può essere fermata normalmente.
+
 ### Trasparenza dell'input e ID
 - [ ] L'input completo del passo (prompt + istruzione di sistema + token di controllo + token già generati) è visibile per intero.
 - [ ] Gli ID dei token sono visibili a richiesta (non di default) e corrispondono ai pezzi di testo.

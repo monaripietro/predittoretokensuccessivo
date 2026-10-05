@@ -85,9 +85,14 @@
           </span>
           <span class="settings-open" aria-hidden="true"></span>
         </summary>
-        <p class="settings-intro">Queste regole sono dell'<strong>applicazione</strong>, non del modello: il modello calcola sempre gli stessi punteggi. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Le modifiche valgono dal prossimo «Avvia».</p>
+        <p class="settings-intro">Le regole di scelta appartengono all'<strong>applicazione</strong>, mentre l'istruzione di sistema cambia l'input ricevuto dal modello. Ogni impostazione indica la fase dell'anatomia in cui agisce (passaci sopra col mouse per vederla evidenziata). Le modifiche valgono dal prossimo «Avvia».</p>
         <p id="settings-note" class="settings-note" role="status" data-testid="settings-note"></p>
         <div class="settings-grid">
+          <fieldset class="setting setting-wide" id="system-prompt-setting" data-stage-hint="assemble">
+            <legend><span class="stage-tag">fase 2 · Assemblaggio</span>Istruzione di sistema</legend>
+            <textarea id="system-prompt" rows="3" maxlength="240" aria-describedby="system-prompt-explain" data-testid="system-prompt">Rispondi in italiano, in modo breve e semplice: al massimo due frasi.</textarea>
+            <p id="system-prompt-explain" class="setting-explain">È l'istruzione iniziale aggiunta dall'app prima della tua domanda. Puoi cambiarla o lasciarla vuota per non aggiungere istruzioni; il testo resta salvato solo in questo browser.</p>
+          </fieldset>
           <fieldset class="setting setting-wide" data-stage-hint="select">
             <legend><span class="stage-tag">fase 5 · Scelta</span>Come viene scelto il prossimo token</legend>
             <div class="segmented" role="radiogroup" aria-label="Regola di scelta del token">
@@ -101,6 +106,14 @@
               <p>Se un token ha probabilità 60% e un altro 20%, il primo uscirà più spesso, ma anche il secondo può essere scelto. È come una ruota della fortuna: i token più probabili hanno fette più grandi, quelli meno probabili fette più piccole, e la ruota gira.</p>
               <p>In questa pagina, quando un'estrazione sceglie un token che non è il primo, il racconto e il grafico lo dicono esplicitamente («è solo 3° in classifica»).</p>
             </details>
+          </fieldset>
+          <fieldset class="setting" id="thinking-setting" data-stage-hint="assemble" hidden>
+            <legend><span class="stage-tag">fase 2 · Assemblaggio</span>Ragionamento del modello</legend>
+            <div class="segmented" role="radiogroup" aria-label="Ragionamento del modello">
+              <label><input type="radio" name="thinking-mode" value="off" checked data-testid="thinking-off" /><span>Disattivato</span></label>
+              <label><input type="radio" name="thinking-mode" value="on" data-testid="thinking-on" /><span>Attivato</span></label>
+            </div>
+            <p class="setting-explain">Alcuni modelli, come Gemma 4, possono aggiungere una fase di ragionamento prima della risposta. Il controllo è disponibile solo quando il modello lo dichiara nel proprio template.</p>
           </fieldset>
           <fieldset class="setting needs-sampling" id="temperature-setting" data-stage-hint="select">
             <legend><span class="stage-tag">fase 5 · Scelta</span>Temperatura <output id="temperature-out">1</output></legend>

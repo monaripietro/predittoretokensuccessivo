@@ -19,6 +19,7 @@ L'app mostra tutto il percorso: la domanda, l'istruzione di sistema che l'app ag
 - **Sostituzione del token**: in pausa si può cliccare un candidato diverso per forzare la scelta del passo; il modello prosegue da lì. Le probabilità mostrate restano quelle originali del modello; la scelta è etichettata come «scelta del presentatore».
 - **Regia onesta**: pausa, stop e replay. Lo stop durante un calcolo scarta quel risultato; il replay riproduce la traccia registrata senza chiamare il modello ed è segnalato come tale. La registrazione completa si esporta in JSON (seed e parametri inclusi, per verificare ogni estrazione).
 - **Regola di scelta**: predefinita «sempre il più probabile» (greedy); nelle opzioni avanzate si passa all'estrazione casuale pesata con temperatura, top-p e seme.
+- **Impostazioni del modello**: nelle opzioni avanzate si può personalizzare l'istruzione di sistema; Gemma 4 e Qwen3 espongono anche l'opzione di ragionamento del proprio template (`enable_thinking`).
 - **Modalità simulata** (`?mock`): stesso codice di scelta e stesso flusso con un modello finto, sempre dichiarata in pagina come simulazione. Usata dai test automatici.
 
 ## Requisiti
@@ -127,8 +128,9 @@ Deploy automatico tramite workflow su push in `main`: `npm ci && npm run build`,
 3. Verificare a ogni passo: tokenizzazione (con origine system/user/control), classifica con percentuali, token scelto, risposta che cresce.
 4. «Prossimo token» tre volte: esattamente un token per clic.
 5. Provare «Continua da solo», «Pausa», «Ferma» e il replay della registrazione.
-6. Attivare il campionamento nelle opzioni avanzate (temperatura, top-p, seme) e ripetere un avvio.
-7. Controllare la console: nessun errore; in DevTools → Network nessuna richiesta durante la generazione.
+6. Cambiare l'istruzione di sistema nelle opzioni avanzate; sui modelli compatibili provare anche il ragionamento.
+7. Attivare il campionamento nelle opzioni avanzate (temperatura, top-p, seme) e ripetere un avvio.
+8. Controllare la console: nessun errore; in DevTools → Network nessuna richiesta durante la generazione.
 
 Verificare le invarianti (token validi, percentuali in [0,1], contesto coerente), non una frase esatta. Per la verifica completa su dispositivi reali vedi `docs/checklist-manuale.md`.
 
